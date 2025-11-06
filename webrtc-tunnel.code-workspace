@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "node"
+		},
+		{
+			"path": "browser"
+		},
+		{
+			"path": "scripts"
+		}
+	],
+	"settings": {
+	}
+}

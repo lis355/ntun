@@ -1,0 +1,23 @@
+{
+	"name": "webrtc-tunnel-node",
+	"version": "1.0.0",
+	"main": "main.js",
+	"license": "MIT",
+	"type": "module",
+	"scripts": {},
+	"dependencies": {
+		"async": "^3.2.6",
+		"dotenv-flow": "^4.1.0",
+		"express": "^5.1.0",
+		"mri": "^1.2.0",
+		"msgpack5": "^6.0.2",
+		"node-fetch": "^3.3.2",
+		"socks-proxy-agent": "^8.0.5",
+		"socksv5": "^0.0.6",
+		"wrtc": "^0.4.7",
+		"ws": "^8.18.3"
+	},
+	"devDependencies": {
+		"eslint": "^9.26.0"
+	}
+}

@@ -1,0 +1,41 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"runtimeArgs": [],
+			"request": "launch",
+			"name": "rtc",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}/rtc.js",
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"runtimeArgs": [],
+			"request": "launch",
+			"name": "node",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}/node.js",
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"runtimeArgs": [],
+			"request": "launch",
+			"name": "vk",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}/vk.js",
+			"console": "integratedTerminal"
+		}
+	]
+}
