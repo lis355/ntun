@@ -13,6 +13,10 @@ const LOCALHOST = "127.0.0.1";
 
 const packer = msgpack();
 
+function log(...args) {
+	console.log(`[${new Date().toISOString()}]:`, ...args);
+}
+
 function objectToBuffer(obj) {
 	return packer.encode(obj);
 }
@@ -85,9 +89,11 @@ class OutputConnection extends Connection {
 }
 
 class ConnectionMultiplexer extends EventEmitter {
-	static MESSAGE_TYPE_CONNECT = 0;
-	static MESSAGE_TYPE_CLOSE = 1;
-	static MESSAGE_TYPE_DATA = 2;
+	static MESSAGE_TYPES = {
+		CONNECT: 0,
+		CLOSE: 1,
+		DATA: 2
+	};
 
 	constructor(transport) {
 		super();
@@ -106,19 +112,20 @@ class ConnectionMultiplexer extends EventEmitter {
 	}
 
 	sendMessageConnect(connectionId, destinationHost, destinationPort) {
-		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPE_CONNECT, connectionId, destinationHost, destinationPort);
+		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CONNECT, connectionId, destinationHost, destinationPort);
 	}
 
 	sendMessageClose(connectionId) {
-		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPE_CLOSE, connectionId);
+		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CLOSE, connectionId);
 	}
 
 	sendMessageData(connectionId, data) {
-		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPE_DATA, connectionId, data);
+		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.DATA, connectionId, data);
 	}
 
 	sendMessage(type, connectionId, ...args) {
-		// console.log("ConnectionMultiplexer", "send", "from", this.transport.localPort, "to", this.transport.remotePort, type, connectionId);
+		// log("ConnectionMultiplexer", "send", "from", this.transport.socket.localPort, "to", this.transport.socket.remotePort, type, connectionId);
+		log("ConnectionMultiplexer", "send", type, type === ConnectionMultiplexer.MESSAGE_TYPES.DATA && args[0].length);
 
 		const message = [type, connectionId, ...args];
 		const buffer = objectToBuffer(message);
@@ -130,21 +137,22 @@ class ConnectionMultiplexer extends EventEmitter {
 		const message = bufferToObject(buffer);
 		const [type, connectionId, ...args] = message;
 
-		// console.log("ConnectionMultiplexer", "receive", "to", this.transport.localPort, "from", this.transport.remotePort, type, connectionId);
+		// log("ConnectionMultiplexer", "receive", "to", this.transport.socket.localPort, "from", this.transport.socket.remotePort, type, connectionId);
+		log("ConnectionMultiplexer", "receive", type, type === ConnectionMultiplexer.MESSAGE_TYPES.DATA && args[0].length);
 
 		switch (type) {
-			case ConnectionMultiplexer.MESSAGE_TYPE_CONNECT: {
+			case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: {
 				const [destinationHost, destinationPort] = args;
 				this.emit("connect", connectionId, destinationHost, destinationPort);
 
 				break;
 			}
-			case ConnectionMultiplexer.MESSAGE_TYPE_CLOSE: {
+			case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: {
 				this.emit("close", connectionId);
 
 				break;
 			}
-			case ConnectionMultiplexer.MESSAGE_TYPE_DATA: {
+			case ConnectionMultiplexer.MESSAGE_TYPES.DATA: {
 				const [data] = args;
 				this.emit("data", connectionId, data);
 
@@ -153,6 +161,9 @@ class ConnectionMultiplexer extends EventEmitter {
 		}
 	}
 }
+
+// DEBUG
+Object.keys(ConnectionMultiplexer.MESSAGE_TYPES).forEach(key => ConnectionMultiplexer.MESSAGE_TYPES[key] = key);
 
 class Node {
 	constructor() {
@@ -181,7 +192,7 @@ class Socks5InputConnection extends InputConnection {
 
 		await new Promise(resolve => this.server.listen(this.options.port, LOCALHOST, resolve));
 
-		console.log("Connection", "Socks5InputConnection", "local socks proxy server started on", this.options.port, "port");
+		log("Connection", "Socks5InputConnection", "local socks proxy server started on", this.options.port, "port");
 	}
 
 	async stop() {
@@ -190,11 +201,11 @@ class Socks5InputConnection extends InputConnection {
 		this.server.close();
 		this.server = null;
 
-		console.log("Connection", "Socks5InputConnection", "local socks proxy server stopped");
+		log("Connection", "Socks5InputConnection", "local socks proxy server stopped");
 	}
 
 	onSocksServerConnection(info, accept, deny) {
-		console.log("Connection", "Socks5InputConnection", `input socket ${info.srcAddr}:${info.srcPort} want connect to [${info.dstAddr}:${info.dstPort}]`);
+		log("Connection", "Socks5InputConnection", `input socket ${info.srcAddr}:${info.srcPort} want connect to [${info.dstAddr}:${info.dstPort}]`);
 
 		const socket = accept(true);
 		// const connectionId = `${socket.localAddress}:${socket.localPort} <--> ${socket.remoteAddress}:${socket.remotePort}`;
@@ -235,13 +246,13 @@ class InternetOutputConnection extends OutputConnection {
 	async start() {
 		await super.start();
 
-		console.log("Connection", "InternetOutputConnection", "started");
+		log("Connection", "InternetOutputConnection", "started");
 	}
 
 	async stop() {
 		await super.stop();
 
-		console.log("Connection", "InternetOutputConnection", "stopped");
+		log("Connection", "InternetOutputConnection", "stopped");
 	}
 
 	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
@@ -255,7 +266,7 @@ class InternetOutputConnection extends OutputConnection {
 			return new Promise((resolve, reject) => {
 				socket
 					.on("connect", () => {
-						console.log("Connection", "InternetOutputConnection", `connected with [${socket.remoteAddress}:${socket.remotePort}]`);
+						log("Connection", "InternetOutputConnection", `connected with [${socket.remoteAddress}:${socket.remotePort}]`);
 
 						return resolve();
 					});
@@ -323,32 +334,32 @@ class TCPBufferSocketServerTransport extends Transport {
 	start() {
 		super.start();
 
-		console.log("Transport", "TCPBufferSocketServerTransport", "starting");
+		log("Transport", "TCPBufferSocketServerTransport", "starting");
 
 		this.server = net.createServer();
 
 		this.server
 			.on("connection", socket => {
 				if (this.socket) {
-					console.error("Transport", "TCPBufferSocketServerTransport", "server already has a current transport connected socket");
+					log("Transport", "TCPBufferSocketServerTransport", "server already has a current transport connected socket");
 
 					// drop other connection
 					socket.destroy();
 				} else {
 					this.socket = bufferSocket.enhanceSocket(socket);
 
-					console.log("Transport", "TCPBufferSocketServerTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
+					log("Transport", "TCPBufferSocketServerTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
 
-					socket
+					this.socket
 						.on("error", error => {
 							let errorMessage = error.message;
 							if (error.code === "ECONNREFUSED") errorMessage = "Connection refused";
 							else if (error.code === "ECONNRESET") errorMessage = "Connection reset";
 
-							console.error("Transport", "TCPBufferSocketServerTransport", errorMessage);
+							log("Transport", "TCPBufferSocketServerTransport", errorMessage);
 						})
 						.on("close", () => {
-							console.log("Transport", "TCPBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
+							log("Transport", "TCPBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 							this.socket = null;
 
@@ -360,14 +371,14 @@ class TCPBufferSocketServerTransport extends Transport {
 			});
 
 		this.server.listen(this.port, LOCALHOST, () => {
-			console.log("Transport", "TCPBufferSocketServerTransport", "listening", this.port);
+			log("Transport", "TCPBufferSocketServerTransport", "listening", this.port);
 		});
 	}
 
 	stop() {
 		super.stop();
 
-		console.log("Transport", "TCPBufferSocketServerTransport", "stopping");
+		log("Transport", "TCPBufferSocketServerTransport", "stopping");
 
 		if (this.socket) this.socket.destroy();
 
@@ -387,25 +398,26 @@ class TCPBufferSocketClientTransport extends Transport {
 	start() {
 		super.start();
 
-		console.log("Transport", "TCPBufferSocketClientTransport", "starting");
+		log("Transport", "TCPBufferSocketClientTransport", "starting");
 
 		const socket = bufferSocket.enhanceSocket(net.connect(this.port, this.host));
 		socket
 			.on("error", error => {
 				let errorMessage = error.message;
 				if (error.code === "ECONNREFUSED") errorMessage = "Connection refused";
+				else if (error.code === "ECONNRESET") errorMessage = "Connection reset";
 
-				console.error("Transport", "TCPBufferSocketClientTransport", errorMessage);
+				log("Transport", "TCPBufferSocketClientTransport", errorMessage);
 			})
 			.on("connect", () => {
 				this.socket = socket;
 
-				console.log("Transport", "TCPBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
+				log("Transport", "TCPBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.emitConnectedEvent();
 			})
 			.on("close", () => {
-				if (this.socket) console.log("Transport", "TCPBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
+				if (this.socket) log("Transport", "TCPBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.socket = null;
 
@@ -416,7 +428,7 @@ class TCPBufferSocketClientTransport extends Transport {
 	stop() {
 		super.stop();
 
-		console.log("Transport", "TCPBufferSocketClientTransport", "stopping");
+		log("Transport", "TCPBufferSocketClientTransport", "stopping");
 
 		if (this.socket) this.socket.destroy();
 	}
@@ -450,18 +462,18 @@ class WebSocketBufferSocketServerTransport extends WebSocketBufferSocketTranspor
 		this.server
 			.on("connection", webSocket => {
 				if (this.socket) {
-					console.error("Connection", "WebSocketBufferSocketServerTransport", "server already has a current transport connected socket");
+					log("Connection", "WebSocketBufferSocketServerTransport", "server already has a current transport connected socket");
 
 					// drop other connection
 					webSocket.destroy();
 				} else {
 					this.socket = this.enhanceWebSocket(webSocket);
 
-					console.log("Connection", "WebSocketBufferSocketServerTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
+					log("Connection", "WebSocketBufferSocketServerTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
 
 					webSocket
 						.on("close", () => {
-							console.log("Connection", "WebSocketBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
+							log("Connection", "WebSocketBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 							this.socket = null;
 
@@ -499,12 +511,12 @@ class WebSocketBufferSocketClientTransport extends WebSocketBufferSocketTranspor
 			.on("connect", () => {
 				this.socket = this.enhanceWebSocket(webSocket);
 
-				console.log("Transport", "WebSocketBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
+				log("Transport", "WebSocketBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.emitConnectedEvent();
 			})
 			.on("close", () => {
-				console.log("Transport", "WebSocketBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
+				log("Transport", "WebSocketBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.socket = null;
 

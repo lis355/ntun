@@ -1,3 +1,4 @@
+import figlet from "figlet";
 import parser from "yargs-parser";
 
 import ntun from "./ntun.js";
@@ -10,8 +11,17 @@ const args = parser(argv, {
 	array: ["transport"]
 });
 
+function printLogo() {
+	console.log(
+		figlet.textSync(`${info.name} ${info.version}`, {
+			font: "ANSI Shadow",
+			whitespaceBreak: false
+		}).trim()
+	);
+}
+
 async function run() {
-	console.log(`${info.name} ${info.version}`);
+	printLogo();
 
 	const node = new ntun.Node();
 

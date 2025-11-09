@@ -9,6 +9,7 @@
 		"async": "^3.2.6",
 		"dotenv-flow": "^4.1.0",
 		"express": "^5.1.0",
+		"figlet": "^1.9.3",
 		"msgpack5": "^6.0.2",
 		"node-fetch": "^3.3.2",
 		"socks-proxy-agent": "^8.0.5",

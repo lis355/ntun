@@ -11,6 +11,13 @@ async function run() {
 					});
 				});
 
+			child.stderr
+				.on("data", data => {
+					data.toString().split("\n").filter(Boolean).forEach(line => {
+						console.error("[" + str + "]", line.toString().trim());
+					});
+				});
+
 			child
 				.on("error", error => {
 					return reject(error);
@@ -21,17 +28,17 @@ async function run() {
 		});
 	}
 
-	await exec("curl https://jdam.am/api/ip");
+	await exec("curl -s https://jdam.am/api/ip");
 
-	exec("node ./node.cli.js -o -t tcp 8081");
+	// exec("node ./node.cli.js -o -t tcp 8081");
 
-	await new Promise(resolve => setTimeout(resolve, 500));
+	// await new Promise(resolve => setTimeout(resolve, 500));
 
 	exec("node ./node.cli.js -i 8080 --transport tcp localhost:8081");
 
 	await new Promise(resolve => setTimeout(resolve, 500));
 
-	await exec("curl -x socks5://127.0.0.1:8080 https://jdam.am/api/ip");
+	await exec("curl -s -x socks5://127.0.0.1:8080 https://jdam.am/api/ip");
 }
 
 run();

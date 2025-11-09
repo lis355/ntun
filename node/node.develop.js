@@ -9,10 +9,10 @@ import ntun from "./ntun.js";
 dotenv();
 
 async function run() {
-	const transportPort = 8013;
+	const transportPort = 8081;
 	const transportHost = "127.0.0.1";
 
-	const socks5InputConnectionPort = 8012;
+	const socks5InputConnectionPort = 8080;
 
 	const serverTransport = new ntun.transports.TCPBufferSocketServerTransport(transportPort);
 	// serverTransport
@@ -23,7 +23,7 @@ async function run() {
 	// 		console.log("serverTransport", "closed");
 	// 	});
 
-	serverTransport.start();
+	// serverTransport.start();
 
 	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport(transportHost, transportPort);
 	// clientTransport
@@ -37,7 +37,7 @@ async function run() {
 	clientTransport.start();
 
 	await Promise.all([
-		new Promise(resolve => serverTransport.once("connected", resolve)),
+		// new Promise(resolve => serverTransport.once("connected", resolve)),
 		new Promise(resolve => clientTransport.once("connected", resolve))
 	]);
 
@@ -62,16 +62,25 @@ async function run() {
 	}
 
 	const [outputNode, inputNode] = await Promise.all([
-		createOutputNode(),
+		// createOutputNode(),
 		createInputNode()
 	]);
 
-	async function curl(args) {
+	async function exec(str) {
 		return new Promise((resolve, reject) => {
-			const child = childProcess.exec(`curl ${args}`);
+			const child = childProcess.exec(str);
 			child.stdout
 				.on("data", data => {
-					console.log(data.toString());
+					data.toString().split("\n").filter(Boolean).forEach(line => {
+						console.log("[" + str + "]", line.toString().trim());
+					});
+				});
+
+			child.stderr
+				.on("data", data => {
+					data.toString().split("\n").filter(Boolean).forEach(line => {
+						console.error("[" + str + "]", line.toString().trim());
+					});
 				});
 
 			child
@@ -84,7 +93,7 @@ async function run() {
 		});
 	}
 
-	await curl("https://jdam.am/api/ip");
+	await exec("curl -s https://jdam.am/api/ip");
 
 	const urls = [
 		// "http://jdam.am:8260",
@@ -120,7 +129,7 @@ async function run() {
 
 	await test();
 
-	await curl(`-x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
 
 	await inputNode.stop();
 	await outputNode.stop();
