@@ -23,7 +23,7 @@ async function run() {
 	// 		console.log("serverTransport", "closed");
 	// 	});
 
-	// serverTransport.start();
+	serverTransport.start();
 
 	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport(transportHost, transportPort);
 	// clientTransport
@@ -37,7 +37,7 @@ async function run() {
 	clientTransport.start();
 
 	await Promise.all([
-		// new Promise(resolve => serverTransport.once("connected", resolve)),
+		new Promise(resolve => serverTransport.once("connected", resolve)),
 		new Promise(resolve => clientTransport.once("connected", resolve))
 	]);
 
@@ -62,11 +62,14 @@ async function run() {
 	}
 
 	const [outputNode, inputNode] = await Promise.all([
-		// createOutputNode(),
+		createOutputNode(),
 		createInputNode()
 	]);
 
 	async function exec(str) {
+		let stdoutString = "";
+		let stderrString = "";
+
 		return new Promise((resolve, reject) => {
 			const child = childProcess.exec(str);
 			child.stdout
@@ -74,6 +77,8 @@ async function run() {
 					data.toString().split("\n").filter(Boolean).forEach(line => {
 						console.log("[" + str + "]", line.toString().trim());
 					});
+
+					stdoutString += data.toString();
 				});
 
 			child.stderr
@@ -81,6 +86,8 @@ async function run() {
 					data.toString().split("\n").filter(Boolean).forEach(line => {
 						console.error("[" + str + "]", line.toString().trim());
 					});
+
+					stderrString += data.toString();
 				});
 
 			child
@@ -88,24 +95,27 @@ async function run() {
 					return reject(error);
 				})
 				.on("close", () => {
-					return resolve();
+					return resolve({ stdoutString, stderrString });
 				});
 		});
 	}
 
-	await exec("curl -s https://jdam.am/api/ip");
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} http://jdam.am:8302`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
+
+	const { stdoutString: externalIp } = await exec("curl -s https://jdam.am/api/ip");
 
 	const urls = [
-		// "http://jdam.am:8260",
+		"http://jdam.am:8302",
 		"https://jdam.am/api/ip",
 		"https://api.ipify.org/?format=text",
-		"http://jsonip.com/",
 		"https://checkip.amazonaws.com/",
 		"https://icanhazip.com/"
 	];
 
 	const test = async () => {
 		console.log("Testing proxy multiplexing...");
+
 		const start = performance.now();
 
 		const requests = urls.map(async url => {
@@ -114,7 +124,9 @@ async function run() {
 				console.log(`${url} [${proxy}]`);
 
 				const result = await fetch(url, { agent: new SocksProxyAgent(proxy) });
-				const text = await result.text();
+				const text = (await result.text()).trim();
+
+				if (externalIp !== text) throw new Error(`Bad ip response, expected: ${externalIp}, actual: ${text}`);
 
 				console.log(url, text.split("\n")[0], (performance.now() - start) / 1000, "s");
 			} catch (error) {
@@ -128,8 +140,6 @@ async function run() {
 	};
 
 	await test();
-
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
 
 	await inputNode.stop();
 	await outputNode.stop();

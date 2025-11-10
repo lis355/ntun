@@ -3,19 +3,60 @@ import EventEmitter from "node:events";
 import net from "node:net";
 
 import * as ws from "ws";
-import async from "async";
 import msgpack from "msgpack5";
 import socks from "socksv5";
 
 import * as bufferSocket from "./bufferSocket.js";
 
-const LOCALHOST = "127.0.0.1";
+const isDevelopment = Boolean(process.env.VSCODE_INJECTION &&
+	process.env.VSCODE_INSPECTOR_OPTIONS);
 
-const packer = msgpack();
+const DEVELOPMENT_FLAGS = {
+	stringHash: true,
+	logConnectionMultiplexerMessages: true,
+	logPrintHexData: false
+};
+
+if (!isDevelopment) Object.keys(DEVELOPMENT_FLAGS).forEach(flag => DEVELOPMENT_FLAGS[flag] = false);
 
 function log(...args) {
 	console.log(`[${new Date().toISOString()}]:`, ...args);
 }
+
+function getHexTable(buffer, offset = 0, length = null, bytesPerLine = 32) {
+	if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
+
+	const totalLength = length || buffer.length;
+	let output = "";
+
+	for (let i = 0; i < totalLength; i += bytesPerLine) {
+		const lineOffset = offset + i;
+		const hexOffset = lineOffset.toString(16).padStart(8, "0");
+
+		let hexPart = "";
+		let asciiPart = "";
+
+		for (let j = 0; j < bytesPerLine; j++) {
+			const pos = i + j;
+			if (pos < totalLength) {
+				const byte = buffer[pos];
+				hexPart += byte.toString(16).padStart(2, "0") + " ";
+				asciiPart += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : ".";
+			} else {
+				hexPart += "   ";
+				asciiPart += " ";
+			}
+		}
+
+		output += `${hexOffset}  ${hexPart} ${asciiPart}\n`;
+	}
+
+	return output.trim();
+}
+
+const LOCALHOST = "127.0.0.1";
+
+const packer = msgpack();
 
 function objectToBuffer(obj) {
 	return packer.encode(obj);
@@ -35,6 +76,12 @@ function int32md5XorHash(str) {
 }
 
 class Connection {
+	static getConnectionIdBySocket(socket) {
+		return DEVELOPMENT_FLAGS.stringHash
+			? `${socket.localAddress}:${socket.localPort}--${socket.remoteAddress}:${socket.remotePort}`
+			: int32md5XorHash(socket.localAddress + socket.localPort + socket.remoteAddress + socket.remotePort);
+	}
+
 	constructor(node, options = {}) {
 		this.node = node;
 		this.options = options;
@@ -54,12 +101,12 @@ class Connection {
 
 	async stop() {
 		for (const [connectionId, connection] of this.connections) {
-			this.sendSocketMultiplexerClose(connectionId);
+			this.sendSocketMultiplexerClose(connectionId, "ABORT");
 
-			connection.destroy();
+			this.deleteConnection(connection);
+
+			connection.socket.destroy();
 		}
-
-		this.connections.clear();
 
 		this.connectionMultiplexer.stop();
 		this.connectionMultiplexer = null;
@@ -69,8 +116,8 @@ class Connection {
 		this.connectionMultiplexer.sendMessageConnect(connectionId, destinationHost, destinationPort);
 	}
 
-	sendSocketMultiplexerClose(connectionId) {
-		this.connectionMultiplexer.sendMessageClose(connectionId);
+	sendSocketMultiplexerClose(connectionId, errorMessage) {
+		this.connectionMultiplexer.sendMessageClose(connectionId, errorMessage);
 	}
 
 	sendSocketMultiplexerData(connectionId, data) {
@@ -78,8 +125,93 @@ class Connection {
 	}
 
 	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) { }
-	handleSocketMultiplexerOnClose(connectionId) { }
-	handleSocketMultiplexerOnData(connectionId, data) { }
+
+	handleSocketMultiplexerOnClose(connectionId, errorMessage) {
+		const connection = this.connections.get(connectionId);
+		if (!connection) return;
+
+		this.deleteConnection(connection);
+
+		connection.socket.destroy();
+	}
+
+	handleSocketMultiplexerOnData(connectionId, data) {
+		const connection = this.connections.get(connectionId);
+		if (!connection) return;
+
+		if (connection.connected) connection.socket.write(data);
+		else connection.messages.push(data);
+	}
+
+	createConnection(connectionId, socket) {
+		const connection = {
+			connectionId,
+			connected: false,
+			socket,
+			messages: [],
+			listeners: {}
+		};
+
+		this.connections.set(connectionId, connection);
+
+		connection.listeners = {
+			error: this.handleConnectionSocketOnError.bind(this, connection),
+			connect: this.handleConnectionSocketOnConnect.bind(this, connection),
+			ready: this.handleConnectionSocketOnReady.bind(this, connection),
+			close: this.handleConnectionSocketOnClose.bind(this, connection, false),
+			data: this.handleConnectionSocketOnData.bind(this, connection)
+		};
+
+		connection.socket
+			.on("error", connection.listeners.error)
+			.on("connect", connection.listeners.connect)
+			.on("ready", connection.listeners.ready)
+			.on("close", connection.listeners.close)
+			.on("data", connection.listeners.data);
+
+		return connection;
+	}
+
+	deleteConnection(connection) {
+		connection.socket.off("error", connection.listeners.error);
+		connection.socket.off("connect", connection.listeners.connect);
+		connection.socket.off("ready", connection.listeners.ready);
+		connection.socket.off("close", connection.listeners.close);
+		connection.socket.off("data", connection.listeners.data);
+
+		this.connections.delete(connection.connectionId);
+	}
+
+	handleConnectionSocketOnError(connection, error) {
+		log("Connection", this.constructor.name, `error with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`, error.code || error.message);
+
+		connection.errorMessage = error.code || error.message;
+	}
+
+	handleConnectionSocketOnConnect(connection) {
+		// log("Connection", this.constructor.name, `connected with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+
+		connection.connected = true;
+	}
+
+	handleConnectionSocketOnReady(connection) {
+		// log("Connection", this.constructor.name, `ready with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+
+		while (connection.messages.length > 0) connection.socket.write(connection.messages.shift());
+		connection.messages = [];
+	}
+
+	handleConnectionSocketOnClose(connection) {
+		// log("Connection", this.constructor.name, `closed with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+
+		this.deleteConnection(connection);
+
+		this.sendSocketMultiplexerClose(connection.connectionId, connection.errorMessage);
+	}
+
+	handleConnectionSocketOnData(connection, data) {
+		this.sendSocketMultiplexerData(connection.connectionId, data);
+	}
 }
 
 class InputConnection extends Connection {
@@ -115,8 +247,8 @@ class ConnectionMultiplexer extends EventEmitter {
 		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CONNECT, connectionId, destinationHost, destinationPort);
 	}
 
-	sendMessageClose(connectionId) {
-		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CLOSE, connectionId);
+	sendMessageClose(connectionId, errorMessage = null) {
+		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CLOSE, connectionId, errorMessage);
 	}
 
 	sendMessageData(connectionId, data) {
@@ -124,11 +256,16 @@ class ConnectionMultiplexer extends EventEmitter {
 	}
 
 	sendMessage(type, connectionId, ...args) {
-		// log("ConnectionMultiplexer", "send", "from", this.transport.socket.localPort, "to", this.transport.socket.remotePort, type, connectionId);
-		log("ConnectionMultiplexer", "send", type, type === ConnectionMultiplexer.MESSAGE_TYPES.DATA && args[0].length);
-
 		const message = [type, connectionId, ...args];
 		const buffer = objectToBuffer(message);
+
+		if (DEVELOPMENT_FLAGS.logConnectionMultiplexerMessages) {
+			switch (type) {
+				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: log("ConnectionMultiplexer", "send", "CONNECT", args[0], args[1]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: log("ConnectionMultiplexer", "send", "CLOSE", args[0]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: log("ConnectionMultiplexer", "send", "DATA", args[0].length, DEVELOPMENT_FLAGS.logPrintHexData && ("\n" + getHexTable(args[0]))); break;
+			}
+		}
 
 		this.transport.socket.sendBuffer(buffer);
 	}
@@ -137,8 +274,13 @@ class ConnectionMultiplexer extends EventEmitter {
 		const message = bufferToObject(buffer);
 		const [type, connectionId, ...args] = message;
 
-		// log("ConnectionMultiplexer", "receive", "to", this.transport.socket.localPort, "from", this.transport.socket.remotePort, type, connectionId);
-		log("ConnectionMultiplexer", "receive", type, type === ConnectionMultiplexer.MESSAGE_TYPES.DATA && args[0].length);
+		if (DEVELOPMENT_FLAGS.logConnectionMultiplexerMessages) {
+			switch (type) {
+				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: log("ConnectionMultiplexer", "receive", "CONNECT", args[0], args[1]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: log("ConnectionMultiplexer", "receive", "CLOSE", args[0]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: log("ConnectionMultiplexer", "receive", "DATA", args[0].length, DEVELOPMENT_FLAGS.logPrintHexData && ("\n" + getHexTable(args[0]))); break;
+			}
+		}
 
 		switch (type) {
 			case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: {
@@ -148,7 +290,8 @@ class ConnectionMultiplexer extends EventEmitter {
 				break;
 			}
 			case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: {
-				this.emit("close", connectionId);
+				const [errorMessage] = args;
+				this.emit("close", connectionId, errorMessage);
 
 				break;
 			}
@@ -161,9 +304,6 @@ class ConnectionMultiplexer extends EventEmitter {
 		}
 	}
 }
-
-// DEBUG
-Object.keys(ConnectionMultiplexer.MESSAGE_TYPES).forEach(key => ConnectionMultiplexer.MESSAGE_TYPES[key] = key);
 
 class Node {
 	constructor() {
@@ -192,7 +332,7 @@ class Socks5InputConnection extends InputConnection {
 
 		await new Promise(resolve => this.server.listen(this.options.port, LOCALHOST, resolve));
 
-		log("Connection", "Socks5InputConnection", "local socks proxy server started on", this.options.port, "port");
+		log("Connection", "Socks5InputConnection", `local socks proxy server started on socks5://${LOCALHOST}:${this.options.port}`);
 	}
 
 	async stop() {
@@ -205,40 +345,23 @@ class Socks5InputConnection extends InputConnection {
 	}
 
 	onSocksServerConnection(info, accept, deny) {
-		log("Connection", "Socks5InputConnection", `input socket ${info.srcAddr}:${info.srcPort} want connect to [${info.dstAddr}:${info.dstPort}]`);
+
+		// TODO по хорошему, мы можем сначала попробовать законнектить удаленный сокет с dstAddr, а уже потом, при успешном соединении, вызывать accept(true)
+		// для этого нужно принимать событие, что удаленный сокет на транспорте подключился, чтобы не отправлять лишних данных сразу... но нужно ли оно это?...
 
 		const socket = accept(true);
-		// const connectionId = `${socket.localAddress}:${socket.localPort} <--> ${socket.remoteAddress}:${socket.remotePort}`;
-		const connectionId = int32md5XorHash(socket.localAddress + socket.localPort + socket.remoteAddress + socket.remotePort);
-		this.connections.set(connectionId, socket);
+
+		const connectionId = Connection.getConnectionIdBySocket(socket);
+		const connection = this.createConnection(connectionId, socket);
+		this.handleConnectionSocketOnConnect(connection);
+
+		log("Connection", "Socks5InputConnection", `[${connection.socket.remoteAddress}:${connection.socket.remotePort}] socks proxies to [${info.dstAddr}:${info.dstPort}]`);
 
 		this.sendSocketMultiplexerConnect(connectionId, info.dstAddr, info.dstPort);
-
-		socket
-			.on("data", data => {
-				this.sendSocketMultiplexerData(connectionId, data);
-			})
-			.on("close", () => {
-				this.connections.delete(connectionId);
-
-				this.sendSocketMultiplexerClose(connectionId);
-			});
 	}
 
-	handleSocketMultiplexerOnClose(connectionId) {
-		const socket = this.connections.get(connectionId);
-
-		socket.removeAllListeners("data");
-		socket.removeAllListeners("close");
-
-		socket.destroy();
-
-		this.connections.delete(connectionId);
-	}
-
-	handleSocketMultiplexerOnData(connectionId, data) {
-		const socket = this.connections.get(connectionId);
-		socket.write(data);
+	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
+		throw new Error("This is a InputConnection");
 	}
 }
 
@@ -256,51 +379,11 @@ class InternetOutputConnection extends OutputConnection {
 	}
 
 	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
-		const socket = net.connect(destinationPort, destinationHost);
-		this.connections.set(connectionId, socket);
+		log("Connection", "InternetOutputConnection", `output internet connection to [${destinationHost}:${destinationPort}]`);
 
-		// we must wait until connect, before send any data to remoteSocket, create asyncQueue for each connection
-		socket.asyncQueue = async.queue(async task => task());
+		const destinationSocket = net.connect(destinationPort, destinationHost);
 
-		socket.asyncQueue.push(async () => {
-			return new Promise((resolve, reject) => {
-				socket
-					.on("connect", () => {
-						log("Connection", "InternetOutputConnection", `connected with [${socket.remoteAddress}:${socket.remotePort}]`);
-
-						return resolve();
-					});
-			});
-		});
-
-		socket
-			.on("data", data => {
-				this.sendSocketMultiplexerData(connectionId, data);
-			})
-			.on("close", () => {
-				this.connections.delete(connectionId);
-
-				this.sendSocketMultiplexerClose(connectionId);
-			});
-	}
-
-	handleSocketMultiplexerOnClose(connectionId) {
-		const socket = this.connections.get(connectionId);
-		socket.asyncQueue.push(async () => {
-			socket.removeAllListeners("data");
-			socket.removeAllListeners("close");
-
-			socket.destroy();
-
-			this.connections.delete(connectionId);
-		});
-	}
-
-	handleSocketMultiplexerOnData(connectionId, data) {
-		const socket = this.connections.get(connectionId);
-		socket.asyncQueue.push(async () => {
-			socket.write(data);
-		});
+		this.createConnection(connectionId, destinationSocket);
 	}
 }
 
@@ -308,19 +391,21 @@ class Transport extends EventEmitter {
 	constructor() {
 		super();
 
-		// current transport socket
-		this.socket = null;
+		this.transportSocket = null;
 	}
 
 	start() { }
 	stop() { }
 
-	emitConnectedEvent() {
-		this.emit("connected");
+	get socket() {
+		return this.transportSocket;
 	}
 
-	emitClosedEvent() {
-		this.emit("closed");
+	set socket(socket) {
+		this.transportSocket = socket;
+
+		if (this.transportSocket) this.emit("connected");
+		else this.emit("closed");
 	}
 }
 
@@ -362,11 +447,7 @@ class TCPBufferSocketServerTransport extends Transport {
 							log("Transport", "TCPBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 							this.socket = null;
-
-							this.emitClosedEvent();
 						});
-
-					this.emitConnectedEvent();
 				}
 			});
 
@@ -387,18 +468,44 @@ class TCPBufferSocketServerTransport extends Transport {
 	}
 }
 
+const TRANSPORT_CONNECTION_TIMEOUT = 5 * 1000;
+
 class TCPBufferSocketClientTransport extends Transport {
 	constructor(host, port) {
 		super();
 
 		this.host = host;
 		this.port = port;
+
+		this.attemptToConnect = this.attemptToConnect.bind(this);
 	}
 
 	start() {
 		super.start();
 
 		log("Transport", "TCPBufferSocketClientTransport", "starting");
+
+		this.connecting = true;
+		this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, 0);
+	}
+
+	stop() {
+		super.stop();
+
+		log("Transport", "TCPBufferSocketClientTransport", "stopping");
+
+		if (this.connecting) {
+			this.attemptToConnectTimeout = clearTimeout(this.attemptToConnectTimeout);
+			this.connecting = false;
+		}
+
+		if (this.socket) this.socket.destroy();
+	}
+
+	attemptToConnect() {
+		if (!this.connecting) return;
+
+		log("Transport", "TCPBufferSocketClientTransport", "attempting to connect");
 
 		const socket = bufferSocket.enhanceSocket(net.connect(this.port, this.host));
 		socket
@@ -413,24 +520,17 @@ class TCPBufferSocketClientTransport extends Transport {
 				this.socket = socket;
 
 				log("Transport", "TCPBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
-
-				this.emitConnectedEvent();
 			})
 			.on("close", () => {
 				if (this.socket) log("Transport", "TCPBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.socket = null;
 
-				this.emitClosedEvent();
+				const isConnecting = this.attemptToConnectTimeout;
+				const connectionAttemptTimeout = isConnecting ? TRANSPORT_CONNECTION_TIMEOUT : 0;
+				if (isConnecting) log("Transport", "TCPBufferSocketClientTransport", "waiting connection attempt timeout", connectionAttemptTimeout);
+				this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, connectionAttemptTimeout);
 			});
-	}
-
-	stop() {
-		super.stop();
-
-		log("Transport", "TCPBufferSocketClientTransport", "stopping");
-
-		if (this.socket) this.socket.destroy();
 	}
 }
 
@@ -476,11 +576,7 @@ class WebSocketBufferSocketServerTransport extends WebSocketBufferSocketTranspor
 							log("Connection", "WebSocketBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 							this.socket = null;
-
-							this.emitClosedEvent();
 						});
-
-					this.emitConnectedEvent();
 				}
 			});
 	}
@@ -512,15 +608,11 @@ class WebSocketBufferSocketClientTransport extends WebSocketBufferSocketTranspor
 				this.socket = this.enhanceWebSocket(webSocket);
 
 				log("Transport", "WebSocketBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
-
-				this.emitConnectedEvent();
 			})
 			.on("close", () => {
 				log("Transport", "WebSocketBufferSocketClientTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
 
 				this.socket = null;
-
-				this.emitClosedEvent();
 			});
 	}
 
