@@ -21,6 +21,12 @@ function printLogo() {
 	);
 }
 
+function checkPort(port) {
+	return Number.isFinite(port) &&
+		port >= 0 &&
+		port <= 65535;
+}
+
 async function run() {
 	printLogo();
 
@@ -30,9 +36,7 @@ async function run() {
 		args.input && args.output) throw new Error("One of input or output must be specified");
 
 	if (args.input) {
-		if (!Number.isFinite(args.input) ||
-			args.input < 0 ||
-			args.input > 65535) throw new Error("Invalid input port");
+		if (!checkPort(args.input)) throw new Error("Invalid input port");
 
 		node.inputConnection = new ntun.inputConnections.Socks5InputConnection(node, { port: args.input });
 
@@ -54,19 +58,14 @@ async function run() {
 				try {
 					let [host, port] = args.transport[1].split(":");
 					port = Number(port);
-
-					if (!Number.isFinite(port) ||
-						port < 0 ||
-						port > 65535) throw new Error("Invalid transport port");
+					if (!checkPort(port)) throw new Error("Invalid transport port");
 
 					node.transport = new ntun.transports.TCPBufferSocketClientTransport(host, port);
 				} catch (_) {
 					throw new Error("Invalid transport URL");
 				}
 			} else if (node.outputConnection) {
-				if (!Number.isFinite(args.transport[1]) ||
-					args.transport[1] < 0 ||
-					args.transport[1] > 65535) throw new Error("Invalid transport port");
+				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
 
 				node.transport = new ntun.transports.TCPBufferSocketServerTransport(args.transport[1]);
 			}
@@ -75,18 +74,17 @@ async function run() {
 		}
 		case "ws": {
 			if (node.inputConnection) {
-				let url;
 				try {
-					url = new URL(args.transport[1]);
+					let [host, port] = args.transport[1].split(":");
+					port = Number(port);
+					if (!checkPort(port)) throw new Error("Invalid transport port");
+
+					node.transport = new ntun.transports.WebSocketBufferSocketClientTransport(host, port);
 				} catch (_) {
 					throw new Error("Invalid transport URL");
 				}
-
-				node.transport = new ntun.transports.WebSocketBufferSocketClientTransport(url.hostname, url.port);
 			} else if (node.outputConnection) {
-				if (!Number.isFinite(args.transport[1]) ||
-					args.transport[1] < 0 ||
-					args.transport[1] > 65535) throw new Error("Invalid transport port");
+				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
 
 				node.transport = new ntun.transports.WebSocketBufferSocketServerTransport(args.transport[1]);
 			}
