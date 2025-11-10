@@ -10,10 +10,10 @@ import * as bufferSocket from "./bufferSocket.js";
 import log from "./utils/log.js";
 
 const DEVELOPMENT_FLAGS = {
-	stringHash: true,
-	logConnectionMultiplexerMessages: true,
-	logPrintHexData: true,
-	logPrintPeriodicallyStatus: true
+	stringHash: false,
+	logConnectionMultiplexerMessages: false,
+	logPrintHexData: false,
+	logPrintPeriodicallyStatus: false
 };
 
 function getHexTable(buffer, offset = 0, length = null, bytesPerLine = 32) {
@@ -133,6 +133,8 @@ class Connection {
 	handleSocketMultiplexerOnClose(connectionId, errorMessage) {
 		const connection = this.connections.get(connectionId);
 		if (!connection) return;
+
+		if (errorMessage) log("Connection", this.constructor.name, "remote connection error", connectionId, errorMessage);
 
 		this.deleteConnection(connection);
 
@@ -406,10 +408,13 @@ class Transport extends EventEmitter {
 	}
 
 	set socket(socket) {
+		if (this.transportSocket === socket) return;
+
+		if (!socket) this.emit("closed");
+
 		this.transportSocket = socket;
 
-		if (this.transportSocket) this.emit("connected");
-		else this.emit("closed");
+		if (socket) this.emit("connected");
 	}
 }
 
@@ -504,7 +509,10 @@ class TCPBufferSocketClientTransport extends Transport {
 			this.connecting = false;
 		}
 
-		if (this.socket) this.socket.destroy();
+		if (this.socket) {
+			this.socketDestroyed = true;
+			this.socket.destroy();
+		}
 	}
 
 	attemptToConnect() {
@@ -525,6 +533,8 @@ class TCPBufferSocketClientTransport extends Transport {
 			.on("connect", () => {
 				this.socket = socket;
 
+				this.connecting = false;
+
 				log("Transport", "TCPBufferSocketClientTransport", "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
 			})
 			.on("close", () => {
@@ -532,9 +542,14 @@ class TCPBufferSocketClientTransport extends Transport {
 
 				this.socket = null;
 
-				const isConnecting = this.attemptToConnectTimeout;
-				const connectionAttemptTimeout = isConnecting ? TRANSPORT_CONNECTION_TIMEOUT : 0;
-				if (isConnecting) log("Transport", "TCPBufferSocketClientTransport", "waiting connection attempt timeout", connectionAttemptTimeout);
+				if (this.socketDestroyed) {
+					this.socketDestroyed = false;
+					return;
+				}
+
+				const connectionAttemptTimeout = this.connecting ? TRANSPORT_CONNECTION_TIMEOUT : 0;
+				if (this.connecting) log("Transport", "TCPBufferSocketClientTransport", "waiting connection attempt timeout", connectionAttemptTimeout);
+				if (!this.connecting) this.connecting = true;
 				this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, connectionAttemptTimeout);
 			});
 	}
@@ -633,8 +648,11 @@ export default {
 	Connection,
 	InputConnection,
 	OutputConnection,
+
 	ConnectionMultiplexer,
+
 	Node,
+
 	Transport,
 
 	inputConnections: {

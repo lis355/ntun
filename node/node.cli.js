@@ -17,7 +17,7 @@ function printLogo() {
 		figlet.textSync(`${info.name} ${info.version}`, {
 			font: "ANSI Shadow",
 			whitespaceBreak: false
-		}).trim()
+		}).trim() + "\n"
 	);
 }
 

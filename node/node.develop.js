@@ -4,103 +4,83 @@ import { config as dotenv } from "dotenv-flow";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import fetch from "node-fetch";
 
+import log from "./utils/log.js";
 import ntun from "./ntun.js";
 
 dotenv();
 
+async function exec(str) {
+	let stdoutString = "";
+	let stderrString = "";
+
+	return new Promise((resolve, reject) => {
+		const child = childProcess.exec(str);
+		child.stdout
+			.on("data", data => {
+				data.toString().split("\n").filter(Boolean).forEach(line => {
+					console.log("[" + str + "]", line.toString().trim());
+				});
+
+				stdoutString += data.toString();
+			});
+
+		child.stderr
+			.on("data", data => {
+				data.toString().split("\n").filter(Boolean).forEach(line => {
+					console.error("[" + str + "]", line.toString().trim());
+				});
+
+				stderrString += data.toString();
+			});
+
+		child
+			.on("error", error => {
+				return reject(error);
+			})
+			.on("close", () => {
+				return resolve({ stdoutString, stderrString });
+			});
+	});
+}
+
 async function run() {
 	const transportPort = 8081;
 	const transportHost = "127.0.0.1";
-
 	const socks5InputConnectionPort = 8080;
 
 	const serverTransport = new ntun.transports.TCPBufferSocketServerTransport(transportPort);
-	// serverTransport
-	// 	.on("connected", () => {
-	// 		console.log("serverTransport", "connected");
-	// 	})
-	// 	.on("closed", () => {
-	// 		console.log("serverTransport", "closed");
-	// 	});
+	const serverNode = new ntun.Node();
+	serverNode.outputConnection = new ntun.outputConnections.InternetOutputConnection(serverNode);
+	serverNode.transport = serverTransport;
 
-	// serverTransport.start();
+	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport(transportHost, transportPort);//, "jdam.am", 8303);
+	const clientNode = new ntun.Node();
+	clientNode.inputConnection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
+	clientNode.transport = clientTransport;
 
-	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport("jdam.am", 8303);
-	// clientTransport
-	// 	.on("connected", () => {
-	// 		console.log("clientTransport", "connected");
-	// 	})
-	// 	.on("closed", () => {
-	// 		console.log("clientTransport", "closed");
-	// 	});
+	serverTransport
+		.on("connected", () => {
+			serverNode.start();
+		})
+		.on("closed", () => {
+			serverNode.stop();
+		});
 
+	clientTransport
+		.on("connected", () => {
+			clientNode.start();
+		})
+		.on("closed", () => {
+			clientNode.stop();
+		});
+
+	serverTransport.start();
 	clientTransport.start();
 
-	await Promise.all([
-		// new Promise(resolve => serverTransport.once("connected", resolve)),
-		new Promise(resolve => clientTransport.once("connected", resolve))
-	]);
+	// await new Promise(resolve => setTimeout(resolve, 1000));
 
-	async function createOutputNode() {
-		const outputNode = new ntun.Node();
-		outputNode.outputConnection = new ntun.outputConnections.InternetOutputConnection(outputNode);
-		outputNode.transport = serverTransport;
-
-		await outputNode.start();
-
-		return outputNode;
-	}
-
-	async function createInputNode() {
-		const inputNode = new ntun.Node();
-		inputNode.inputConnection = new ntun.inputConnections.Socks5InputConnection(inputNode, { port: socks5InputConnectionPort });
-		inputNode.transport = clientTransport;
-
-		await inputNode.start();
-
-		return inputNode;
-	}
-
-	const [outputNode, inputNode] = await Promise.all([
-		// createOutputNode(),
-		createInputNode()
-	]);
-
-	return;
-
-	async function exec(str) {
-		let stdoutString = "";
-		let stderrString = "";
-
-		return new Promise((resolve, reject) => {
-			const child = childProcess.exec(str);
-			child.stdout
-				.on("data", data => {
-					data.toString().split("\n").filter(Boolean).forEach(line => {
-						console.log("[" + str + "]", line.toString().trim());
-					});
-
-					stdoutString += data.toString();
-				});
-
-			child.stderr
-				.on("data", data => {
-					data.toString().split("\n").filter(Boolean).forEach(line => {
-						console.error("[" + str + "]", line.toString().trim());
-					});
-
-					stderrString += data.toString();
-				});
-
-			child
-				.on("error", error => {
-					return reject(error);
-				})
-				.on("close", () => {
-					return resolve({ stdoutString, stderrString });
-				});
-		});
-	}
+	// serverTransport.stop();
+	// clientTransport.stop();
 
 	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} http://jdam.am:8302`);
 	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
@@ -123,7 +103,7 @@ async function run() {
 		const requests = urls.map(async url => {
 			try {
 				const proxy = `socks5://127.0.0.1:${socks5InputConnectionPort}`;
-				console.log(`${url} [${proxy}]`);
+				// console.log(`${url} [${proxy}]`);
 
 				const result = await fetch(url, { agent: new SocksProxyAgent(proxy) });
 				const text = (await result.text()).trim();
@@ -142,9 +122,6 @@ async function run() {
 	};
 
 	await test();
-
-	await inputNode.stop();
-	await outputNode.stop();
 
 	serverTransport.stop();
 	clientTransport.stop();
