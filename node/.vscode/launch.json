@@ -82,6 +82,20 @@
 			],
 			"program": "${workspaceFolder}/vk.js",
 			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
+			"runtimeArgs": [],
+			"request": "launch",
+			"name": "WebRTC-simpleSignal",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}/simpleSignal.js",
+			"console": "integratedTerminal",
+			"args": [
+				"8080",
+			]
 		}
 	]
 }

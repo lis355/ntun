@@ -1,4 +1,10 @@
 import express from "express";
+import parser from "yargs-parser";
+
+import log from "./utils/log.js";
+
+const argv = process.argv.slice(2);
+const args = parser(argv);
 
 const app = express();
 app.use(express.text());
@@ -7,7 +13,7 @@ let currentOffer = "";
 let currentAnswer = "";
 
 app.use((req, res, next) => {
-	console.log(`[${new Date().toISOString()}]: ${req.method} ${req.url}`);
+	log(`${req.method} ${req.url}`);
 
 	return next();
 });
@@ -22,7 +28,7 @@ app.use((req, res, next) => {
 
 app.get("/offer", (req, res) => {
 	if (currentOffer) {
-		console.log("offer unsettled");
+		log("offer unsettled");
 
 		const sdp = currentOffer;
 
@@ -38,14 +44,14 @@ app.get("/offer", (req, res) => {
 app.post("/offer", (req, res) => {
 	currentOffer = req.body;
 
-	console.log("offer settled");
+	log("offer settled");
 
 	return res.sendStatus(200);
 });
 
 app.get("/answer", (req, res) => {
 	if (currentAnswer) {
-		console.log("answer unsettled");
+		log("answer unsettled");
 
 		const sdp = currentAnswer;
 
@@ -61,7 +67,7 @@ app.get("/answer", (req, res) => {
 app.post("/answer", (req, res) => {
 	currentAnswer = req.body;
 
-	console.log("answer settled");
+	log("answer settled");
 
 	return res.sendStatus(200);
 });
@@ -70,7 +76,7 @@ app.options(/(.*)/, (req, res) => {
 	return res.sendStatus(200);
 });
 
-const port = 8260;
+const port = args._[0] || 8260;
 app.listen(port, () => {
-	console.log(`Simple signal server listening on port ${port}`);
+	log(`Simple signal server listening on port ${port}`);
 });

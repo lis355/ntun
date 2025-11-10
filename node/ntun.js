@@ -452,7 +452,7 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 	stop() {
 		super.stop();
 
-		log("Transport", "TCPBufferSocketServerTransport", "stopping");
+		log("Transport", this.constructor.name, "stopping");
 
 		if (this.socket) this.destroySocket(this.socket);
 
@@ -669,8 +669,12 @@ export default {
 		InternetOutputConnection
 	},
 	transports: {
+		BufferSocketServerTransport,
+		BufferSocketClientTransport,
+
 		TCPBufferSocketServerTransport,
 		TCPBufferSocketClientTransport,
+
 		WebSocketBufferSocketServerTransport,
 		WebSocketBufferSocketClientTransport
 	}
