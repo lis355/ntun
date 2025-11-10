@@ -55,6 +55,7 @@ function getHexTable(buffer, offset = 0, length = null, bytesPerLine = 32) {
 }
 
 const LOCALHOST = "127.0.0.1";
+const ALL_INTERFACES = "0.0.0.0";
 
 const packer = msgpack();
 
@@ -183,7 +184,7 @@ class Connection {
 	}
 
 	handleConnectionSocketOnError(connection, error) {
-		log("Connection", this.constructor.name, `error with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`, error.code || error.message);
+		log("Connection", this.constructor.name, `error [${connection.socket.localAddress}:${connection.socket.localPort}]`, error.code || error.message);
 
 		connection.errorMessage = error.code || error.message;
 	}
@@ -451,7 +452,7 @@ class TCPBufferSocketServerTransport extends Transport {
 				}
 			});
 
-		this.server.listen(this.port, LOCALHOST, () => {
+		this.server.listen(this.port, ALL_INTERFACES, () => {
 			log("Transport", "TCPBufferSocketServerTransport", "listening", this.port);
 		});
 	}
@@ -557,7 +558,7 @@ class WebSocketBufferSocketServerTransport extends WebSocketBufferSocketTranspor
 	start() {
 		super.start();
 
-		this.server = new ws.WebSocketServer({ host: LOCALHOST, port });
+		this.server = new ws.WebSocketServer({ host: ALL_INTERFACES, port });
 
 		this.server
 			.on("connection", webSocket => {
