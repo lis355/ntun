@@ -23,9 +23,9 @@ async function run() {
 	// 		console.log("serverTransport", "closed");
 	// 	});
 
-	serverTransport.start();
+	// serverTransport.start();
 
-	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport(transportHost, transportPort);
+	const clientTransport = new ntun.transports.TCPBufferSocketClientTransport("jdam.am", 8303);
 	// clientTransport
 	// 	.on("connected", () => {
 	// 		console.log("clientTransport", "connected");
@@ -37,7 +37,7 @@ async function run() {
 	clientTransport.start();
 
 	await Promise.all([
-		new Promise(resolve => serverTransport.once("connected", resolve)),
+		// new Promise(resolve => serverTransport.once("connected", resolve)),
 		new Promise(resolve => clientTransport.once("connected", resolve))
 	]);
 
@@ -62,9 +62,11 @@ async function run() {
 	}
 
 	const [outputNode, inputNode] = await Promise.all([
-		createOutputNode(),
+		// createOutputNode(),
 		createInputNode()
 	]);
+
+	return;
 
 	async function exec(str) {
 		let stdoutString = "";

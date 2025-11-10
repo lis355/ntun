@@ -1,6 +1,7 @@
 import figlet from "figlet";
 import parser from "yargs-parser";
 
+import log from "./utils/log.js";
 import ntun from "./ntun.js";
 
 import info from "./package.json" with { type: "json" };
@@ -12,7 +13,7 @@ const args = parser(argv, {
 });
 
 function printLogo() {
-	console.log(
+	process.stdout.write(
 		figlet.textSync(`${info.name} ${info.version}`, {
 			font: "ANSI Shadow",
 			whitespaceBreak: false
@@ -35,13 +36,13 @@ async function run() {
 
 		node.inputConnection = new ntun.inputConnections.Socks5InputConnection(node, { port: args.input });
 
-		console.log("Input connection:", "Socks5InputConnection", "created");
+		log("Input connection:", "Socks5InputConnection", "created");
 	}
 
 	if (args.output) {
 		node.outputConnection = new ntun.outputConnections.InternetOutputConnection(node);
 
-		console.log("Output connection:", "InternetOutputConnection", "created");
+		log("Output connection:", "InternetOutputConnection", "created");
 	}
 
 	if (!args.transport ||
@@ -60,7 +61,7 @@ async function run() {
 
 					node.transport = new ntun.transports.TCPBufferSocketClientTransport(host, port);
 
-					console.log("Transport:", "TCPBufferSocketClientTransport", "created");
+					log("Transport:", "TCPBufferSocketClientTransport", "created");
 				} catch (_) {
 					throw new Error("Invalid transport URL");
 				}
@@ -71,7 +72,7 @@ async function run() {
 
 				node.transport = new ntun.transports.TCPBufferSocketServerTransport(args.transport[1]);
 
-				console.log("Transport:", "TCPBufferSocketServerTransport", "created");
+				log("Transport:", "TCPBufferSocketServerTransport", "created");
 			}
 
 			break;
@@ -87,7 +88,7 @@ async function run() {
 
 				node.transport = new ntun.transports.WebSocketBufferSocketClientTransport(url.hostname, url.port);
 
-				console.log("Transport:", "WebSocketBufferSocketClientTransport", "created");
+				log("Transport:", "WebSocketBufferSocketClientTransport", "created");
 			} else if (node.outputConnection) {
 				if (!Number.isFinite(args.transport[1]) ||
 					args.transport[1] < 0 ||
@@ -95,7 +96,7 @@ async function run() {
 
 				node.transport = new ntun.transports.WebSocketBufferSocketServerTransport(args.transport[1]);
 
-				console.log("Transport:", "WebSocketBufferSocketServerTransport", "created");
+				log("Transport:", "WebSocketBufferSocketServerTransport", "created");
 			}
 
 			break;
@@ -105,11 +106,19 @@ async function run() {
 			throw new Error("Invalid transport");
 	}
 
+	node.transport
+		.on("connected", () => {
+			log("Transport:", "connected");
+
+			node.start();
+		})
+		.on("closed", () => {
+			log("Transport:", "closed");
+
+			node.stop();
+		});
+
 	node.transport.start();
-
-	await new Promise(resolve => node.transport.once("connected", resolve));
-
-	await node.start();
 }
 
 run();

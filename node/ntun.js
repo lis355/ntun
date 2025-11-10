@@ -7,17 +7,14 @@ import msgpack from "msgpack5";
 import socks from "socksv5";
 
 import * as bufferSocket from "./bufferSocket.js";
+import log from "./utils/log.js";
 
 const DEVELOPMENT_FLAGS = {
 	stringHash: true,
 	logConnectionMultiplexerMessages: true,
-	logPrintHexData: false,
+	logPrintHexData: true,
 	logPrintPeriodicallyStatus: true
 };
-
-function log(...args) {
-	console.log(`[${new Date().toISOString()}]:`, ...args);
-}
 
 function getHexTable(buffer, offset = 0, length = null, bytesPerLine = 32) {
 	if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer);
@@ -190,26 +187,26 @@ class Connection {
 	}
 
 	handleConnectionSocketOnError(connection, error) {
-		log("Connection", this.constructor.name, `error [${connection.socket.localAddress}:${connection.socket.localPort}]`, error.code || error.message);
+		log("Connection", this.constructor.name, `error [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`, error.code || error.message);
 
 		connection.errorMessage = error.code || error.message;
 	}
 
 	handleConnectionSocketOnConnect(connection) {
-		// log("Connection", this.constructor.name, `connected with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+		log("Connection", this.constructor.name, `connected with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
 
 		connection.connected = true;
 	}
 
 	handleConnectionSocketOnReady(connection) {
-		// log("Connection", this.constructor.name, `ready with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+		log("Connection", this.constructor.name, `ready with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
 
 		while (connection.messages.length > 0) connection.socket.write(connection.messages.shift());
 		connection.messages = [];
 	}
 
 	handleConnectionSocketOnClose(connection) {
-		// log("Connection", this.constructor.name, `closed with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+		log("Connection", this.constructor.name, `closed with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
 
 		this.deleteConnection(connection);
 
@@ -445,10 +442,11 @@ class TCPBufferSocketServerTransport extends Transport {
 					this.socket
 						.on("error", error => {
 							let errorMessage = error.message;
-							if (error.code === "ECONNREFUSED") errorMessage = "Connection refused";
-							else if (error.code === "ECONNRESET") errorMessage = "Connection reset";
+							if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
+							else if (error.code === "ECONNRESET") errorMessage = "connection reset";
+							else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
 
-							log("Transport", "TCPBufferSocketServerTransport", errorMessage);
+							log("Transport", "TCPBufferSocketServerTransport", "error", errorMessage);
 						})
 						.on("close", () => {
 							log("Transport", "TCPBufferSocketServerTransport", "closed", this.socket.remoteAddress, this.socket.remotePort);
@@ -518,10 +516,11 @@ class TCPBufferSocketClientTransport extends Transport {
 		socket
 			.on("error", error => {
 				let errorMessage = error.message;
-				if (error.code === "ECONNREFUSED") errorMessage = "Connection refused";
-				else if (error.code === "ECONNRESET") errorMessage = "Connection reset";
+				if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
+				else if (error.code === "ECONNRESET") errorMessage = "connection reset";
+				else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
 
-				log("Transport", "TCPBufferSocketClientTransport", errorMessage);
+				log("Transport", "TCPBufferSocketClientTransport", "error", errorMessage);
 			})
 			.on("connect", () => {
 				this.socket = socket;
