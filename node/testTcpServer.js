@@ -7,6 +7,6 @@ net.createServer()
 		socket.write(socket.remoteAddress);
 		socket.end();
 	})
-	.listen(port, "127.0.0.1", () => {
+	.listen(port, "0.0.0.0", () => {
 		console.log(`testTcpServer started on port ${port}`);
 	});
