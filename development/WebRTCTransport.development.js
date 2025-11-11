@@ -1,7 +1,7 @@
 import { config as dotenv } from "dotenv-flow";
 
 import urlTests from "./urlTests.js";
-import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "../transport/WebRTCTransport.js";
+import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "../transport/webrtc/WebRTCTransport.js";
 import log from "../utils/log.js";
 import ntun from "../ntun.js";
 
@@ -27,6 +27,33 @@ async function run() {
 
 			serverTransport.stop();
 		})
+		.on("sdp.offer", async sdp => {
+			log("offer created");
+
+			await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
+				method: "POST",
+				body: JSON.stringify(sdp)
+			});
+
+			const waitForAnswer = async () => {
+				log("waitForAnswer");
+
+				const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
+					method: "GET"
+				});
+
+				if (response.status === 200) {
+					const sdpAnswer = await response.json();
+					serverTransport.setAnswer(sdpAnswer);
+
+					log("answer settled");
+				} else {
+					setTimeout(waitForAnswer, 1000);
+				}
+			};
+
+			waitForAnswer();
+		})
 		.on("connected", () => {
 			serverNode.start();
 		})
@@ -40,12 +67,37 @@ async function run() {
 
 			clientTransport.stop();
 		})
+		.on("sdp.answer", async sdp => {
+			log("answer created");
+
+			await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
+				method: "POST",
+				body: JSON.stringify(sdp)
+			});
+		})
 		.on("connected", () => {
 			clientNode.start();
 		})
 		.on("closed", () => {
 			clientNode.stop();
 		});
+
+	const waitForOffer = async () => {
+		log("waitForOffer");
+
+		const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
+			method: "GET"
+		});
+
+		if (response.status === 200) {
+			const sdpOffer = await response.json();
+			clientTransport.createAnswer(sdpOffer);
+		} else {
+			setTimeout(waitForOffer, 1000);
+		}
+	};
+
+	waitForOffer();
 
 	serverTransport.start();
 

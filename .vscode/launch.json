@@ -6,7 +6,6 @@
 	"configurations": [
 		{
 			"type": "node",
-			"runtimeArgs": [],
 			"request": "launch",
 			"name": "ntun.development",
 			"skipFiles": [
@@ -17,7 +16,16 @@
 		},
 		{
 			"type": "node",
-			"runtimeArgs": [],
+			"request": "launch",
+			"name": "WebRTCTransport.development.js",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"program": "${workspaceFolder}/development/WebRTCTransport.development.js",
+			"console": "integratedTerminal"
+		},
+		{
+			"type": "node",
 			"request": "launch",
 			"name": "node.cli-client",
 			"skipFiles": [
@@ -35,7 +43,6 @@
 		},
 		{
 			"type": "node",
-			"runtimeArgs": [],
 			"request": "launch",
 			"name": "node.cli-server",
 			"skipFiles": [
@@ -52,7 +59,6 @@
 		},
 		{
 			"type": "node",
-			"runtimeArgs": [],
 			"request": "launch",
 			"name": "node.tests",
 			"skipFiles": [
@@ -63,18 +69,6 @@
 		},
 		{
 			"type": "node",
-			"runtimeArgs": [],
-			"request": "launch",
-			"name": "WebRTCTransport.development.js",
-			"skipFiles": [
-				"<node_internals>/**"
-			],
-			"program": "${workspaceFolder}/development/WebRTCTransport.development.js.js",
-			"console": "integratedTerminal"
-		},
-		{
-			"type": "node",
-			"runtimeArgs": [],
 			"request": "launch",
 			"name": "rtc",
 			"skipFiles": [

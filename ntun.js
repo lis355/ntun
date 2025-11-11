@@ -419,11 +419,33 @@ class Transport extends EventEmitter {
 }
 
 class BufferSocketTransport extends Transport {
-	enhanceSocket(socket) {
-		return bufferSocket.enhanceSocket(socket);
+	constructor() {
+		super();
+
+		this.handleSocketOnError = this.handleSocketOnError.bind(this);
+		this.handleSocketOnClose = this.handleSocketOnClose.bind(this);
 	}
 
-	destroySocket(socket) { }
+	enhanceSocket(socket) {
+		socket = bufferSocket.enhanceSocket(socket);
+
+		socket
+			.on("error", this.handleSocketOnError)
+			.on("close", this.handleSocketOnClose);
+
+		return socket;
+	}
+
+	destroySocket(socket) {
+		socket
+			.off("error", this.handleSocketOnError)
+			.off("close", this.handleSocketOnClose);
+
+		socket.destroy();
+	}
+
+	handleSocketOnError(error) { }
+	handleSocketOnClose() { }
 }
 
 class BufferSocketServerTransport extends BufferSocketTransport {
@@ -479,40 +501,50 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 			this.socket = this.enhanceSocket(socket);
 
 			log("Transport", this.constructor.name, "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
-
-			this.socket
-				.on("error", error => {
-					let errorMessage = error.message;
-					if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
-					else if (error.code === "ECONNRESET") errorMessage = "connection reset";
-					else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
-
-					log("Transport", this.constructor.name, "error", errorMessage);
-				})
-				.on("close", () => {
-					log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
-
-					this.socket = null;
-				});
 		}
+	}
+
+	handleSocketOnError(error) {
+		let errorMessage = error.message;
+		if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
+		else if (error.code === "ECONNRESET") errorMessage = "connection reset";
+		else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
+
+		log("Transport", this.constructor.name, "error", errorMessage);
+	}
+
+	handleSocketOnClose() {
+		log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
+
+		this.socket = null;
 	}
 }
 
 class TCPBufferSocketServerTransport extends BufferSocketServerTransport {
+	constructor(port) {
+		super(port);
+
+		this.handleServerOnListening = this.handleServerOnListening.bind(this);
+	}
+
 	createServer() {
 		this.server = net.createServer();
 
-		this.server.listen(this.port, ALL_INTERFACES, () => {
-			log("Transport", this.constructor.name, "listening", `${this.server.address().address}:${this.server.address().port}`);
-		});
+		this.server
+			.on("listening", this.handleServerOnListening);
+
+		this.server.listen(this.port, ALL_INTERFACES, this.handleServerOnListening);
+	}
+
+	handleServerOnListening() {
+		log("Transport", this.constructor.name, "listening", `${this.server.address().address}:${this.server.address().port}`);
 	}
 
 	destroyServer() {
-		this.server.close();
-	}
+		this.server
+			.off("listening", this.handleServerOnListening);
 
-	destroySocket(socket) {
-		socket.destroy();
+		this.server.close();
 	}
 }
 
@@ -563,14 +595,6 @@ class BufferSocketClientTransport extends BufferSocketTransport {
 
 		const socket = this.enhanceSocket(this.createSocket());
 		socket
-			.on("error", error => {
-				let errorMessage = error.message;
-				if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
-				else if (error.code === "ECONNRESET") errorMessage = "connection reset";
-				else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
-
-				log("Transport", this.constructor.name, "error", errorMessage);
-			})
 			.on("connect", () => {
 				this.socketDestroyedByStopCalled = false;
 
@@ -579,22 +603,32 @@ class BufferSocketClientTransport extends BufferSocketTransport {
 				this.connecting = false;
 
 				log("Transport", this.constructor.name, "connected", this.socket.localAddress, this.socket.localPort, "<-->", this.socket.remoteAddress, this.socket.remotePort);
-			})
-			.on("close", () => {
-				if (this.socket) log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
-
-				this.socket = null;
-
-				if (this.socketDestroyedByStopCalled) {
-					this.socketDestroyedByStopCalled = false;
-					return;
-				}
-
-				const connectionAttemptTimeout = this.connecting ? TRANSPORT_CONNECTION_TIMEOUT : 0;
-				if (this.connecting) log("Transport", this.constructor.name, "waiting connection attempt timeout", connectionAttemptTimeout);
-				if (!this.connecting) this.connecting = true;
-				this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, connectionAttemptTimeout);
 			});
+	}
+
+	handleSocketOnError(error) {
+		let errorMessage = error.message;
+		if (error.code === "ECONNREFUSED") errorMessage = "connection refused";
+		else if (error.code === "ECONNRESET") errorMessage = "connection reset";
+		else if (error.code === "ETIMEDOUT") errorMessage = "connection timeout";
+
+		log("Transport", this.constructor.name, "error", errorMessage);
+	}
+
+	handleSocketOnClose() {
+		if (this.socket) log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
+
+		this.socket = null;
+
+		if (this.socketDestroyedByStopCalled) {
+			this.socketDestroyedByStopCalled = false;
+			return;
+		}
+
+		const connectionAttemptTimeout = this.connecting ? TRANSPORT_CONNECTION_TIMEOUT : 0;
+		if (this.connecting) log("Transport", this.constructor.name, "waiting connection attempt timeout", connectionAttemptTimeout);
+		if (!this.connecting) this.connecting = true;
+		this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, connectionAttemptTimeout);
 	}
 }
 
@@ -602,15 +636,12 @@ class TCPBufferSocketClientTransport extends BufferSocketClientTransport {
 	createSocket() {
 		return net.connect(this.port, this.host);
 	}
-
-	destroySocket(socket) {
-		socket.destroy();
-	}
 }
 
 function enhanceWebSocket(webSocket) {
 	webSocket.sendBuffer = buffer => webSocket.send(buffer);
 	webSocket.end = () => webSocket.close();
+	webSocket.destroy = () => webSocket.terminate();
 	webSocket.on("open", () => webSocket.emit("connect"));
 	webSocket.on("message", message => webSocket.emit("buffer", message));
 
@@ -631,10 +662,6 @@ class WebSocketBufferSocketServerTransport extends BufferSocketServerTransport {
 		this.server.close();
 	}
 
-	destroySocket(socket) {
-		socket.terminate();
-	}
-
 	enhanceSocket(webSocket) {
 		return enhanceWebSocket(webSocket);
 	}
@@ -643,10 +670,6 @@ class WebSocketBufferSocketServerTransport extends BufferSocketServerTransport {
 class WebSocketBufferSocketClientTransport extends BufferSocketClientTransport {
 	createSocket() {
 		return new ws.WebSocket(`ws://${this.host}:${this.port}`);
-	}
-
-	destroySocket(socket) {
-		socket.terminate();
 	}
 
 	enhanceSocket(webSocket) {

@@ -1,5 +1,7 @@
 import EventEmitter from "events";
 
+import wrtc from "wrtc";
+
 export default class WebRTCPeer extends EventEmitter {
 	static ICE_GATHERING_TIMEOUT = 60 * 1000;
 
@@ -22,7 +24,7 @@ export default class WebRTCPeer extends EventEmitter {
 		return obj.map(([key, value]) => `${key}=${value}\r\n`).join("");
 	}
 
-	constructor(RTCPeerConnectionClass, options) {
+	constructor(options) {
 		super();
 
 		this.options = options;
@@ -30,7 +32,7 @@ export default class WebRTCPeer extends EventEmitter {
 		this.options.iceGatheringTimeout = this.options.iceGatheringTimeout || WebRTCPeer.ICE_GATHERING_TIMEOUT;
 		this.options.cancelGatheringCondition = this.options.cancelGatheringCondition || (peer => false);
 
-		this.peerConnection = new RTCPeerConnectionClass({
+		this.peerConnection = new wrtc.RTCPeerConnection({
 			iceServers: options.iceServers,
 			iceTransportPolicy: options.iceTransportPolicy
 		});

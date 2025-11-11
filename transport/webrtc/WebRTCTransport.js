@@ -1,10 +1,8 @@
 import net from "node:net";
 
-import wrtc from "wrtc";
-
 import log from "../utils/log.js";
 import ntun from "../ntun.js";
-import WebRTCPeer from "../../browser/src/common/WebRTCPeer.js";
+import WebRTCPeer from "./WebRTCPeer.js";
 
 const DEVELOPMENT_FLAGS = {
 	logPeer: false
@@ -67,17 +65,9 @@ class WebRTCPeerTransport extends ntun.Transport {
 
 		log("Transport", this.constructor.name, "stopping");
 
-		if (this.socket) {
-			this.socketDestroyedByStopCalled = true;
-			this.destroySocket(this.socket);
-			this.socket = null;
-		}
+		if (this.socket) this.socket = null;
 
 		this.destroyPeer();
-	}
-
-	destroySocket(socket) {
-		socket.destroy();
 	}
 
 	createPeer() {
@@ -90,7 +80,7 @@ class WebRTCPeerTransport extends ntun.Transport {
 			}
 		};
 
-		this.peer = new WebRTCPeer(wrtc.RTCPeerConnection, webRTCPeerOptions);
+		this.peer = new WebRTCPeer(webRTCPeerOptions);
 
 		if (DEVELOPMENT_FLAGS.logPeer) {
 			this.peer
@@ -153,10 +143,20 @@ class WebRTCPeerTransport extends ntun.Transport {
 		return success;
 	}
 
+	// connection flow
+	// called on server (offer peer)
+	async createOffer() { }
+	// "sdp.offer" event when created sdp offer
+
+	// called on client (answer peer)
+	async createAnswer(sdpOffer) { }
+	// "sdp.answer" event when created sdp answer
+
+	// to server (offer peer)
+	async setAnswer(sdpAnswer) { }
+
 	handlePeerOnConnect() {
 		log("Transport", this.constructor.name, "peer connected");
-
-		this.socketDestroyedByStopCalled = false;
 
 		this.socket = new TransportBufferSocketWrapper();
 		this.socket
@@ -193,35 +193,15 @@ export class WebRTCPeerServerTransport extends WebRTCPeerTransport {
 
 		if (!await this.checkTurnServerConnection()) return;
 
-		await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
-			method: "POST",
-			body: JSON.stringify(this.sdpOffer)
-		});
+		this.createOffer();
+	}
 
-		log("offer created");
+	async createOffer() {
+		this.emit("sdp.offer", this.sdpOffer);
+	}
 
-		await new Promise(resolve => {
-			const waitForAnswer = async () => {
-				log("waitForAnswer");
-
-				const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
-					method: "GET"
-				});
-
-				if (response.status === 200) {
-					const sdpAnswer = await response.json();
-					await this.peer.setAnswer(sdpAnswer);
-
-					log("answer settled");
-
-					return resolve();
-				} else {
-					setTimeout(waitForAnswer, 1000);
-				}
-			};
-
-			waitForAnswer();
-		});
+	async setAnswer(sdpAnswer) {
+		this.peer.setAnswer(sdpAnswer);
 	}
 }
 
@@ -239,33 +219,11 @@ export class WebRTCPeerClientTransport extends WebRTCPeerTransport {
 
 		this.destroyPeer();
 		this.createPeer();
+	}
 
-		await new Promise(resolve => {
-			const waitForOffer = async () => {
-				log("waitForOffer");
+	async createAnswer(sdpOffer) {
+		this.sdpAnswer = await this.peer.createAnswer(sdpOffer);
 
-				const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
-					method: "GET"
-				});
-
-				if (response.status === 200) {
-					const sdpOffer = await response.json();
-					const sdpAnswer = await this.peer.createAnswer(sdpOffer);
-
-					await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
-						method: "POST",
-						body: JSON.stringify(sdpAnswer)
-					});
-
-					log("answer created");
-
-					return resolve();
-				} else {
-					setTimeout(waitForOffer, 1000);
-				}
-			};
-
-			waitForOffer();
-		});
+		this.emit("sdp.answer", this.sdpAnswer);
 	}
 }

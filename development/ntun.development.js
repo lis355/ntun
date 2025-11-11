@@ -1,9 +1,9 @@
 import { config as dotenv } from "dotenv-flow";
 
-import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "./transports/WebRTCPeerServerTransport.js";
-import log from "./utils/log.js";
-import ntun from "./ntun.js";
-import urlTests from "./development/urlTests.js";
+// import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "../transport/WebRTCTransport.js";
+import log from "../utils/log.js";
+import ntun from "../ntun.js";
+import urlTests from "./urlTests.js";
 
 dotenv();
 
@@ -11,7 +11,7 @@ async function run() {
 	const transportPort = 8081;
 	const transportHost = "127.0.0.1";
 	const socks5InputConnectionPort = 8080;
-	const transport = "webrtc";
+	const transport = "webSocket";
 
 	let serverTransport;
 	let clientTransport;
@@ -24,10 +24,10 @@ async function run() {
 			serverTransport = new ntun.transports.WebSocketBufferSocketServerTransport(transportPort);
 			clientTransport = new ntun.transports.WebSocketBufferSocketClientTransport(transportHost, transportPort);
 			break;
-		case "webrtc":
-			serverTransport = new WebRTCPeerServerTransport(process.env.DEVELOP_WEB_RTC_SERVERS);
-			clientTransport = new WebRTCPeerClientTransport(process.env.DEVELOP_WEB_RTC_SERVERS);
-			break;
+		// case "webrtc":
+		// 	serverTransport = new WebRTCPeerServerTransport(process.env.DEVELOP_WEB_RTC_SERVERS);
+		// 	clientTransport = new WebRTCPeerClientTransport(process.env.DEVELOP_WEB_RTC_SERVERS);
+		// 	break;
 		default:
 			throw new Error("Invalid transport");
 	}
