@@ -6,6 +6,10 @@ import { WebRTCTransport } from "../webrtc/WebRTCTransport.js";
 import log from "../../utils/log.js";
 import symmetricChipher from "../../utils/symmetricChipher.js";
 
+const DEVELOPMENT_FLAGS = {
+	logIceServers: false
+};
+
 export function getJoinId(joinIdOrLink) {
 	if (!joinIdOrLink) throw new Error("Join id or link is required");
 
@@ -193,7 +197,7 @@ class VkWebSocketSignalServer extends EventEmitter {
 	}
 
 	sendJson(json) {
-		log("VkWebSocketSignalServer", "sendJson", json);
+		// log("VkWebSocketSignalServer", "sendJson", json);
 
 		this.send(JSON.stringify(json));
 	}
@@ -276,7 +280,8 @@ export class VkWebRTCTransport extends WebRTCTransport {
 		log("Transport", this.constructor.name, "VkWebSocketSignalServer got connection");
 
 		this.iceServers = [this.vkWebSocketSignalServer.connectionInfo.conversationParams.turn];
-		log(JSON.stringify(this.iceServers));
+
+		if (DEVELOPMENT_FLAGS.logIceServers) log("Transport", this.constructor.name, "iceServers", JSON.stringify(this.iceServers));
 
 		await super.startConnection();
 
@@ -314,11 +319,11 @@ export class VkWebRTCTransport extends WebRTCTransport {
 	}
 
 	handleVkWebSocketSignalServerOnMessage(message) {
-		if (message &&
-			message.type === "notification" &&
-			["connection", "settings-update"].includes(message.notification)) return;
+		// if (message &&
+		// 	message.type === "notification" &&
+		// 	["connection", "settings-update"].includes(message.notification)) return;
 
-		log("handleVkWebSocketSignalServerOnMessage", message);
+		// log("handleVkWebSocketSignalServerOnMessage", message);
 	}
 
 	handleVkWebSocketSignalServerOnNotification(message) {
@@ -328,20 +333,28 @@ export class VkWebRTCTransport extends WebRTCTransport {
 
 			const decryptedData = symmetricChipher.decrypt(data);
 			if (decryptedData) {
+				let sdp;
 				try {
-					const sdp = JSON.parse(decryptedData);
+					sdp = JSON.parse(decryptedData);
+				} catch {
+					log("Transport", this.constructor.name, "bad data decoding from participant", senderParticipantId, "data", data);
+				}
 
+				if (sdp) {
 					log("sdp", sdp.type, "from", senderParticipantId);
 
 					if (this.isOfferPeer &&
 						this.answerParticipantId === senderParticipantId) {
-						this.createAnswer(sdp);
+						this.setAnswer(sdp);
 					} else if (this.isAnswerPeer) {
 						this.offerParticipantId = senderParticipantId;
 
 						this.createAnswer(sdp);
+					} else {
+						log("Transport", this.constructor.name, "strange logic on decoded sdp message from participant", senderParticipantId, "data", data);
 					}
-				} catch {
+				} else {
+					log("Transport", this.constructor.name, "unknown custom-data message from participant", senderParticipantId, "data", data);
 				}
 			}
 		}

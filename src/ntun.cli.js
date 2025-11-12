@@ -1,10 +1,10 @@
 import figlet from "figlet";
 import parser from "yargs-parser";
 
+import { getJoinId, VkWebRTCTransport } from "./transport/vk-webrtc/VkWebRTCTransport.js";
 import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "./transport/webrtc/WebRTCTransport.js";
 import log from "./utils/log.js";
 import ntun from "./ntun.js";
-import vk from "./vk.js";
 
 import info from "./package.json" with { type: "json" };
 
@@ -112,15 +112,15 @@ async function run() {
 		case "vk-webrtc": {
 			let joinId;
 			try {
-				joinId = vk.getJoinId(args.transport[1]);
+				joinId = getJoinId(args.transport[1]);
 			} catch {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 
 			if (node.inputConnection) {
-				node.transport = new WebRTCPeerClientTransport(joinId);
+				node.transport = new VkWebRTCTransport(joinId);
 			} else if (node.outputConnection) {
-				node.transport = new WebRTCPeerServerTransport(joinId);
+				node.transport = new VkWebRTCTransport(joinId);
 			}
 
 			break;
