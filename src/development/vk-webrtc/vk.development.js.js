@@ -38,7 +38,10 @@ async function run() {
 		});
 
 	serverTransport.start();
-	// clientTransport.start();
+
+	await new Promise(resolve => setTimeout(resolve, 3000));
+
+	clientTransport.start();
 
 	await new Promise(resolve => {
 		const check = () => {

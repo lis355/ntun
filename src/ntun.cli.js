@@ -63,7 +63,7 @@ async function run() {
 					if (!checkPort(port)) throw new Error("Invalid transport port");
 
 					node.transport = new ntun.transports.TCPBufferSocketClientTransport(host, port);
-				} catch (_) {
+				} catch {
 					throw new Error("Invalid transport URL");
 				}
 			} else if (node.outputConnection) {
@@ -82,7 +82,7 @@ async function run() {
 					if (!checkPort(port)) throw new Error("Invalid transport port");
 
 					node.transport = new ntun.transports.WebSocketBufferSocketClientTransport(host, port);
-				} catch (_) {
+				} catch {
 					throw new Error("Invalid transport URL");
 				}
 			} else if (node.outputConnection) {
@@ -97,7 +97,7 @@ async function run() {
 			let iceServers;
 			try {
 				iceServers = JSON.parse(args.transport[1]);
-			} catch (_) {
+			} catch {
 				throw new Error("Invalid ice servers json");
 			}
 
@@ -113,7 +113,7 @@ async function run() {
 			let joinId;
 			try {
 				joinId = vk.getJoinId(args.transport[1]);
-			} catch (_) {
+			} catch {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 

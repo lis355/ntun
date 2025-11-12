@@ -14,7 +14,7 @@ export function getJoinId(joinIdOrLink) {
 	try {
 		const url = new URL(joinIdOrLink);
 		if (url.href.startsWith("https://vk.com/call/join/")) joinId = url.pathname.split("/").at(-1);
-	} catch (_) {
+	} catch {
 	}
 
 	return joinId;
@@ -153,7 +153,7 @@ class VkWebSocketSignalServer extends EventEmitter {
 	handleWebSocketOnMessage(data) {
 		try {
 			data = data.toString();
-		} catch (_) {
+		} catch {
 			log("VkWebSocketSignalServer", "recieve unknown message");
 
 			return;
@@ -162,7 +162,7 @@ class VkWebSocketSignalServer extends EventEmitter {
 		let json;
 		try {
 			json = JSON.parse(data);
-		} catch (_) {
+		} catch {
 		}
 
 		// log("VkWebSocketSignalServer", "recieve", data);
@@ -193,6 +193,8 @@ class VkWebSocketSignalServer extends EventEmitter {
 	}
 
 	sendJson(json) {
+		log("VkWebSocketSignalServer", "sendJson", json);
+
 		this.send(JSON.stringify(json));
 	}
 
@@ -219,6 +221,7 @@ export class VkWebRTCTransport extends WebRTCTransport {
 		this.handleVkWebSocketSignalServerOnStarted = this.handleVkWebSocketSignalServerOnStarted.bind(this);
 		this.handleVkWebSocketSignalServerOnStopped = this.handleVkWebSocketSignalServerOnStopped.bind(this);
 		this.handleVkWebSocketSignalServerOnReady = this.handleVkWebSocketSignalServerOnReady.bind(this);
+		this.handleVkWebSocketSignalServerOnMessage = this.handleVkWebSocketSignalServerOnMessage.bind(this);
 		this.handleVkWebSocketSignalServerOnNotification = this.handleVkWebSocketSignalServerOnNotification.bind(this);
 
 		this.on("sdp.offer", this.handleOnSdpOffer);
@@ -234,6 +237,7 @@ export class VkWebRTCTransport extends WebRTCTransport {
 			.on("started", this.handleVkWebSocketSignalServerOnStarted)
 			.on("stopped", this.handleVkWebSocketSignalServerOnStopped)
 			.on("ready", this.handleVkWebSocketSignalServerOnReady)
+			.on("message", this.handleVkWebSocketSignalServerOnMessage)
 			.on("notification", this.handleVkWebSocketSignalServerOnNotification);
 
 		this.vkWebSocketSignalServer.start();
@@ -247,6 +251,7 @@ export class VkWebRTCTransport extends WebRTCTransport {
 			.off("started", this.handleVkWebSocketSignalServerOnStarted)
 			.off("stopped", this.handleVkWebSocketSignalServerOnStopped)
 			.off("ready", this.handleVkWebSocketSignalServerOnReady)
+			.off("message", this.handleVkWebSocketSignalServerOnMessage)
 			.off("notification", this.handleVkWebSocketSignalServerOnNotification);
 
 		this.vkWebSocketSignalServer.stop();
@@ -271,6 +276,7 @@ export class VkWebRTCTransport extends WebRTCTransport {
 		log("Transport", this.constructor.name, "VkWebSocketSignalServer got connection");
 
 		this.iceServers = [this.vkWebSocketSignalServer.connectionInfo.conversationParams.turn];
+		log(JSON.stringify(this.iceServers));
 
 		await super.startConnection();
 
@@ -279,7 +285,10 @@ export class VkWebRTCTransport extends WebRTCTransport {
 
 			// кто зашёл вторым, т.е. в this.vkWebSocketSignalServer.connectionInfo.conversation.participants уже есть список участников
 			// тот будет оффером, и будет отправлять существущему участнику заявку
-			const firstParticipant = this.vkWebSocketSignalServer.connectionInfo.conversation.participants.at(0);
+			const firstParticipant = this.vkWebSocketSignalServer.connectionInfo.conversation.participants
+				.filter(participant => participant.id !== this.vkWebSocketSignalServer.participantId)
+				.at(0);
+
 			if (firstParticipant) {
 				this.isOfferPeer = true;
 				this.offerParticipantId = this.vkWebSocketSignalServer.participantId;
@@ -287,29 +296,53 @@ export class VkWebRTCTransport extends WebRTCTransport {
 				this.isAnswerPeer = false;
 				this.answerParticipantId = firstParticipant.id;
 
+				log("Transport", this.constructor.name, "start offer connection", "answerParticipantId", this.answerParticipantId);
+
 				this.startOfferConnection();
 			} else {
 				this.isOfferPeer = false;
 				this.offerParticipantId = null; // узнаем в notification === "custom-data"
 
 				this.isAnswerPeer = true;
-				this.answerParticipantId = firstParticipant.id;
+				this.answerParticipantId = this.vkWebSocketSignalServer.participantId;
+
+				log("Transport", this.constructor.name, "start answer connection");
 
 				this.startAnswerConnection();
 			}
 		}
 	}
 
+	handleVkWebSocketSignalServerOnMessage(message) {
+		if (message &&
+			message.type === "notification" &&
+			["connection", "settings-update"].includes(message.notification)) return;
+
+		log("handleVkWebSocketSignalServerOnMessage", message);
+	}
+
 	handleVkWebSocketSignalServerOnNotification(message) {
-		if (this.isAnswerPeer &&
-			message.notification === "custom-data") {
+		if (message.notification === "custom-data") {
 			const senderParticipantId = message.participantId;
 			const data = message.data;
+
 			const decryptedData = symmetricChipher.decrypt(data);
 			if (decryptedData) {
-				log("decryptedData", decryptedData, "from", senderParticipantId);
+				try {
+					const sdp = JSON.parse(decryptedData);
 
-				this.offerParticipantId = senderParticipantId;
+					log("sdp", sdp.type, "from", senderParticipantId);
+
+					if (this.isOfferPeer &&
+						this.answerParticipantId === senderParticipantId) {
+						this.createAnswer(sdp);
+					} else if (this.isAnswerPeer) {
+						this.offerParticipantId = senderParticipantId;
+
+						this.createAnswer(sdp);
+					}
+				} catch {
+				}
 			}
 		}
 	}

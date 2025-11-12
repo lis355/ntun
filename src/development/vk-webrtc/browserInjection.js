@@ -17,7 +17,7 @@ window.WebSocket = function (url, protocols) {
 				&& json.notification === "connection") {
 				console.log("participantId", json.conversation.participants.find(participant => participant.peerId.id === json.peerId.id).id);
 			}
-		} catch (_) {
+		} catch {
 		}
 	});
 
