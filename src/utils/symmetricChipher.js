@@ -6,7 +6,7 @@ import info from "../../package.json" with { type: "json" };
 
 const chipherKey = crypto.createHash("sha256").update(hash(info)).digest();
 
-function encode(str) {
+function encrypt(str) {
 	const iv = crypto.randomBytes(16);
 
 	const cipher = crypto.createCipheriv("aes-256-gcm", chipherKey, iv);
@@ -19,7 +19,7 @@ function encode(str) {
 	return iv.toString("base64") + ":" + authTag.toString("base64") + ":" + encrypted;
 }
 
-function decode(encoded) {
+function decrypt(encoded) {
 	try {
 		const [iv, authTag, data] = encoded.split(":");
 
@@ -35,4 +35,7 @@ function decode(encoded) {
 	}
 }
 
-export default { encode, decode };
+export default {
+	encrypt,
+	decrypt
+};

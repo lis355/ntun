@@ -126,6 +126,8 @@ export class WebRTCTransport extends ntun.Transport {
 	}
 
 	async checkTurnServerConnection() {
+		log("Transport", this.constructor.name, "checking turn server connection");
+
 		let success = true;
 		let errorMessage;
 
@@ -145,6 +147,8 @@ export class WebRTCTransport extends ntun.Transport {
 		}
 
 		if (!success) this.emit("error", new Error(`TURN server connection failed: ${errorMessage}`));
+
+		if (success) log("Transport", this.constructor.name, "connectin to turn server success");
 
 		return success;
 	}

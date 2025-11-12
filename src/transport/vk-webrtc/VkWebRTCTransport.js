@@ -1,8 +1,9 @@
 import EventEmitter from "events";
 
-import ws from "ws";
+import * as ws from "ws";
 
 import { WebRTCTransport } from "../webrtc/WebRTCTransport.js";
+import log from "../../utils/log.js";
 import symmetricChipher from "../../utils/symmetricChipher.js";
 
 export function getJoinId(joinIdOrLink) {
@@ -36,9 +37,9 @@ async function getVkWebSocketSignalServerUrlByJoinId(joinId) {
 
 		const json = await response.json();
 
-		// console.log("POST", url);
-		// console.log(JSON.stringify(params, null, 2));
-		// console.log(JSON.stringify(json, null, 2));
+		// log("POST", url);
+		// log(JSON.stringify(params, null, 2));
+		// log(JSON.stringify(json, null, 2));
 
 		return json;
 	}
@@ -164,7 +165,7 @@ class VkWebSocketSignalServer extends EventEmitter {
 		} catch (_) {
 		}
 
-		log("VkWebSocketSignalServer", "recieve", data);
+		// log("VkWebSocketSignalServer", "recieve", data);
 
 		if (data === "ping") this.send("pong");
 
@@ -186,7 +187,7 @@ class VkWebSocketSignalServer extends EventEmitter {
 	}
 
 	send(data) {
-		log("VkWebSocketSignalServer", "send", data);
+		// log("VkWebSocketSignalServer", "send", data);
 
 		this.webSocket.send(data);
 	}
@@ -255,26 +256,26 @@ export class VkWebRTCTransport extends WebRTCTransport {
 	}
 
 	handleVkWebSocketSignalServerOnError(error) {
-		log("error", error);
+		log("Transport", this.constructor.name, "VkWebSocketSignalServer error", error.message);
 	}
 
 	handleVkWebSocketSignalServerOnStarted() {
-		log("started");
+		log("Transport", this.constructor.name, "VkWebSocketSignalServer started");
 	}
 
 	handleVkWebSocketSignalServerOnStopped() {
-		log("stopped");
+		log("Transport", this.constructor.name, "VkWebSocketSignalServer stopped");
 	}
 
 	async handleVkWebSocketSignalServerOnReady() {
+		log("Transport", this.constructor.name, "VkWebSocketSignalServer got connection");
+
 		this.iceServers = [this.vkWebSocketSignalServer.connectionInfo.conversationParams.turn];
 
 		await super.startConnection();
 
 		if (this.turnServerConnectionSuccess) {
-			log("peerId", this.vkWebSocketSignalServer.peerId);
-			log("participantId", this.vkWebSocketSignalServer.participantId);
-			log("conversationId", this.vkWebSocketSignalServer.conversationId);
+			log("Transport", this.constructor.name, "VkWebSocketSignalServer", "peerId", this.vkWebSocketSignalServer.peerId, "participantId", this.vkWebSocketSignalServer.participantId, "conversationId", this.vkWebSocketSignalServer.conversationId);
 
 			// кто зашёл вторым, т.е. в this.vkWebSocketSignalServer.connectionInfo.conversation.participants уже есть список участников
 			// тот будет оффером, и будет отправлять существущему участнику заявку
