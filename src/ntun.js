@@ -179,11 +179,12 @@ class Connection {
 	}
 
 	deleteConnection(connection) {
-		connection.socket.off("error", connection.listeners.error);
-		connection.socket.off("connect", connection.listeners.connect);
-		connection.socket.off("ready", connection.listeners.ready);
-		connection.socket.off("close", connection.listeners.close);
-		connection.socket.off("data", connection.listeners.data);
+		connection.socket
+			.off("error", connection.listeners.error)
+			.off("connect", connection.listeners.connect)
+			.off("ready", connection.listeners.ready)
+			.off("close", connection.listeners.close)
+			.off("data", connection.listeners.data);
 
 		this.connections.delete(connection.connectionId);
 	}
@@ -410,7 +411,7 @@ class Transport extends EventEmitter {
 	set socket(socket) {
 		if (this.transportSocket === socket) return;
 
-		if (!socket) this.emit("closed");
+		if (!socket) this.emit("disconnected");
 
 		this.transportSocket = socket;
 
@@ -514,7 +515,7 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 	}
 
 	handleSocketOnClose() {
-		log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
+		log("Transport", this.constructor.name, "disconnected", this.socket.remoteAddress, this.socket.remotePort);
 
 		this.socket = null;
 	}
@@ -616,7 +617,7 @@ class BufferSocketClientTransport extends BufferSocketTransport {
 	}
 
 	handleSocketOnClose() {
-		if (this.socket) log("Transport", this.constructor.name, "closed", this.socket.remoteAddress, this.socket.remotePort);
+		if (this.socket) log("Transport", this.constructor.name, "disconnected", this.socket.remoteAddress, this.socket.remotePort);
 
 		this.socket = null;
 

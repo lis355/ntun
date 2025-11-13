@@ -56,7 +56,7 @@ export default class VkCallSignalServerTransport extends ntun.Transport {
 		this.joinId = joinId;
 
 		this.handleOnConnected = this.handleOnConnected.bind(this);
-		this.handleOnClosed = this.handleOnClosed.bind(this);
+		this.handleOnDisconnected = this.handleOnDisconnected.bind(this);
 		this.handleVkWebSocketSignalServerOnError = this.handleVkWebSocketSignalServerOnError.bind(this);
 		this.handleVkWebSocketSignalServerOnStarted = this.handleVkWebSocketSignalServerOnStarted.bind(this);
 		this.handleVkWebSocketSignalServerOnStopped = this.handleVkWebSocketSignalServerOnStopped.bind(this);
@@ -66,7 +66,7 @@ export default class VkCallSignalServerTransport extends ntun.Transport {
 		this.handleSocketOnWrite = this.handleSocketOnWrite.bind(this);
 
 		this.on("connected", this.handleOnConnected);
-		this.on("closed", this.handleOnClosed);
+		this.on("disconnected", this.handleOnDisconnected);
 	}
 
 	start() {
@@ -277,7 +277,7 @@ export default class VkCallSignalServerTransport extends ntun.Transport {
 			.on("write", this.handleSocketOnWrite);
 	}
 
-	handleOnClosed() {
+	handleOnDisconnected() {
 		this.socket
 			.off("write", this.handleSocketOnWrite);
 	}

@@ -1,12 +1,11 @@
 import figlet from "figlet";
 import parser from "yargs-parser";
 
-import { WebRTCPeerServerTransport, WebRTCPeerClientTransport } from "./transport/webrtc/WebRTCTransport.js";
-import getJoinId from "./transport/vk-calls/getJoinId.js";
 import log from "./utils/log.js";
 import ntun from "./ntun.js";
-import VkCallSignalServerTransport from "./transport/vk-calls/VkCallSignalServerTransport.js";
-import VkWebRTCTransport from "./transport/vk-calls/VkWebRTCTransport.js";
+
+import VkTransport from "./transport/vk-calls/VkTransport.js";
+import WebRTCTransport from "./transport/webrtc/WebRTCTransport.js";
 
 import info from "../package.json" with { type: "json" };
 
@@ -116,9 +115,9 @@ async function run() {
 			}
 
 			if (node.inputConnection) {
-				node.transport = new WebRTCPeerClientTransport(iceServers);
+				node.transport = new WebRTCTransport.WebRTCPeerClientTransport(iceServers);
 			} else if (node.outputConnection) {
-				node.transport = new WebRTCPeerServerTransport(iceServers);
+				node.transport = new WebRTCTransport.WebRTCPeerServerTransport(iceServers);
 			}
 
 			break;
@@ -126,15 +125,15 @@ async function run() {
 		case TRANSPORT.VK_WEBRTC: {
 			let joinId;
 			try {
-				joinId = getJoinId(args.transport[1]);
+				joinId = VkTransport.getJoinId(args.transport[1]);
 			} catch {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 
 			if (node.inputConnection) {
-				node.transport = new VkWebRTCTransport(joinId);
+				node.transport = new VkTransport.VkWebRTCTransport(joinId);
 			} else if (node.outputConnection) {
-				node.transport = new VkWebRTCTransport(joinId);
+				node.transport = new VkTransport.VkWebRTCTransport(joinId);
 			}
 
 			break;
@@ -148,9 +147,9 @@ async function run() {
 			}
 
 			if (node.inputConnection) {
-				node.transport = new VkCallSignalServerTransport(joinId);
+				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
 			} else if (node.outputConnection) {
-				node.transport = new VkCallSignalServerTransport(joinId);
+				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
 			}
 
 			break;
@@ -168,8 +167,8 @@ async function run() {
 
 			node.start();
 		})
-		.on("closed", () => {
-			log("Transport", node.transport.constructor.name, "closed");
+		.on("disconnected", () => {
+			log("Transport", node.transport.constructor.name, "disconnected");
 
 			node.stop();
 		});

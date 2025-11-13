@@ -39,7 +39,7 @@ class TransportBufferSocketWrapper extends net.Socket {
 	}
 }
 
-export class WebRTCTransport extends ntun.Transport {
+class WebRTCTransport extends ntun.Transport {
 	constructor() {
 		super();
 
@@ -229,7 +229,7 @@ class WebRTCPeerTransport extends WebRTCTransport {
 	}
 }
 
-export class WebRTCPeerServerTransport extends WebRTCPeerTransport {
+class WebRTCPeerServerTransport extends WebRTCPeerTransport {
 	async startConnection() {
 		await super.startConnection();
 
@@ -237,10 +237,17 @@ export class WebRTCPeerServerTransport extends WebRTCPeerTransport {
 	}
 }
 
-export class WebRTCPeerClientTransport extends WebRTCPeerTransport {
+class WebRTCPeerClientTransport extends WebRTCPeerTransport {
 	async startConnection() {
 		await super.startConnection();
 
 		this.startAnswerConnection();
 	}
 }
+
+export default {
+	WebRTCTransport,
+	WebRTCPeerTransport,
+	WebRTCPeerServerTransport,
+	WebRTCPeerClientTransport
+};

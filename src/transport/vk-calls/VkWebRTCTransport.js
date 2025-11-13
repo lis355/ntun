@@ -1,7 +1,7 @@
 import { getVkWebSocketSignalServerUrlByJoinId, VkWebSocketSignalServer } from "./VkWebSocketSignalServer.js";
-import { WebRTCTransport } from "../webrtc/WebRTCTransport.js";
 import log from "../../utils/log.js";
 import symmetricStringCipher from "../../utils/symmetricStringCipher.js";
+import WebRTCTransport from "../webrtc/WebRTCTransport.js";
 
 const DEVELOPMENT_FLAGS = {
 	logIceServers: false
@@ -9,7 +9,7 @@ const DEVELOPMENT_FLAGS = {
 
 // Транспорт, использующий TURN сервера VK
 // Для получения TURN сервера и создания webrtc коннекта используется VkWebSocketSignalServer
-export default class VkWebRTCTransport extends WebRTCTransport {
+export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 	constructor(joinId) {
 		super();
 

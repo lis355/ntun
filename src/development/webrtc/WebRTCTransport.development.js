@@ -57,7 +57,7 @@ async function run() {
 		.on("connected", () => {
 			serverNode.start();
 		})
-		.on("closed", () => {
+		.on("disconnected", () => {
 			serverNode.stop();
 		});
 
@@ -78,7 +78,7 @@ async function run() {
 		.on("connected", () => {
 			clientNode.start();
 		})
-		.on("closed", () => {
+		.on("disconnected", () => {
 			clientNode.stop();
 		});
 
