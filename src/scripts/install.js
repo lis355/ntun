@@ -1,13 +1,19 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import url from "node:url";
 
-import { windowsBatFilePath } from "./appInfo.js";
+import { projectDirectory, windowsBatFilePath } from "./appInfo.js";
 
-const currentScriptDirname = path.dirname(url.fileURLToPath(import.meta.url));
-
-fs.writeFileSync(windowsBatFilePath, `@echo off
-node "${path.resolve(currentScriptDirname, "..", "ntun.cli.js")}" %*
+switch (os.platform()) {
+	case "win32": {
+		fs.writeFileSync(windowsBatFilePath, `@echo off
+node "${path.join(projectDirectory, "src", "ntun.cli.js")}" %*
 `);
 
-console.log(`${windowsBatFilePath} created`);
+		console.log(`${windowsBatFilePath} created`);
+
+		break;
+	}
+	default:
+		console.log(`${os.platform()} is not supported`);
+}
