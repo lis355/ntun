@@ -22,9 +22,8 @@ export default async function urlTests(socks5InputConnectionPort) {
 	];
 
 	const test = async () => {
-		log("Start testing");
-
 		const start = performance.now();
+		const time = () => (performance.now() - start) / 1000;
 
 		const requests = urls.map(async url => {
 			try {
@@ -36,15 +35,13 @@ export default async function urlTests(socks5InputConnectionPort) {
 
 				if (externalIp !== text) throw new Error(`Bad ip response, expected: ${externalIp}, actual: ${text}`);
 
-				log(url, chalk.magenta(text), ((performance.now() - start) / 1000).toFixed(2), "s");
+				log(url, chalk.magenta(text), time().toFixed(2), "s");
 			} catch (error) {
 				log(url, chalk.red(error.message));
 			}
 		});
 
 		await Promise.all(requests);
-
-		log("Total time:", ((performance.now() - start) / 1000).toFixed(2), "s");
 	};
 
 	await test();

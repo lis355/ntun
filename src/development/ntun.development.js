@@ -1,10 +1,12 @@
 import { config as dotenv } from "dotenv-flow";
 
-import { log } from "../utils/log.js";
+import { setLogLevel, LOG_LEVELS } from "../utils/log.js";
 import ntun from "../ntun.js";
 import urlTests from "./urlTests.js";
 
 dotenv();
+
+setLogLevel(LOG_LEVELS.INFO);
 
 async function run() {
 	const transportPort = 8081;
@@ -35,65 +37,75 @@ async function run() {
 	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
 	clientNode.transport = clientTransport;
 
-	serverNode.start();
-	clientNode.start();
+	await Promise.all([
+		new Promise(resolve => {
+			serverNode.start();
+			clientNode.start();
 
-	serverTransport.start();
-	clientTransport.start();
+			serverTransport.start();
+			clientTransport.start();
 
-	await new Promise(resolve => {
-		const check = () => {
-			if (serverNode.workingState === ntun.WORKING_STATE.WORKING &&
-				clientNode.workingState === ntun.WORKING_STATE.WORKING &&
-				serverTransport.isConnected &&
-				clientTransport.isConnected) {
-				serverNode.off("started", check);
-				clientNode.off("started", check);
-				serverTransport.off("connected", check);
-				clientTransport.off("connected", check);
+			return resolve();
+		}),
+		new Promise(resolve => {
+			const check = () => {
+				if (serverNode.workingState === ntun.WORKING_STATE.WORKING &&
+					clientNode.workingState === ntun.WORKING_STATE.WORKING &&
+					serverTransport.isConnected &&
+					clientTransport.isConnected) {
+					serverNode.off("started", check);
+					clientNode.off("started", check);
+					serverTransport.off("connected", check);
+					clientTransport.off("connected", check);
 
-				return resolve();
-			}
-		};
+					return resolve();
+				}
+			};
 
-		serverNode.on("started", check);
-		clientNode.on("started", check);
-		serverTransport.on("connected", check);
-		clientTransport.on("connected", check);
+			serverNode.on("started", check);
+			clientNode.on("started", check);
+			serverTransport.on("connected", check);
+			clientTransport.on("connected", check);
 
-		check();
-	});
+			check();
+		})
+	]);
 
 	await urlTests(socks5InputConnectionPort);
 
-	serverTransport.stop();
-	clientTransport.stop();
+	await Promise.all([
+		new Promise(resolve => {
+			serverTransport.stop();
+			clientTransport.stop();
 
-	serverNode.stop();
-	clientNode.stop();
+			serverNode.stop();
+			clientNode.stop();
 
-	await new Promise(resolve => {
-		const check = () => {
-			if (serverNode.workingState === ntun.WORKING_STATE.IDLE &&
-				clientNode.workingState === ntun.WORKING_STATE.IDLE &&
-				serverTransport.workingState === ntun.WORKING_STATE.IDLE &&
-				clientTransport.workingState === ntun.WORKING_STATE.IDLE) {
-				serverNode.off("stopped", check);
-				clientNode.off("stopped", check);
-				serverTransport.off("stopped", check);
-				clientTransport.off("stopped", check);
+			return resolve();
+		}),
+		new Promise(resolve => {
+			const check = () => {
+				if (serverNode.workingState === ntun.WORKING_STATE.IDLE &&
+					clientNode.workingState === ntun.WORKING_STATE.IDLE &&
+					serverTransport.workingState === ntun.WORKING_STATE.IDLE &&
+					clientTransport.workingState === ntun.WORKING_STATE.IDLE) {
+					serverNode.off("stopped", check);
+					clientNode.off("stopped", check);
+					serverTransport.off("stopped", check);
+					clientTransport.off("stopped", check);
 
-				return resolve();
-			}
-		};
+					return resolve();
+				}
+			};
 
-		serverNode.on("stopped", check);
-		clientNode.on("stopped", check);
-		serverTransport.on("stopped", check);
-		clientTransport.on("stopped", check);
+			serverNode.on("stopped", check);
+			clientNode.on("stopped", check);
+			serverTransport.on("stopped", check);
+			clientTransport.on("stopped", check);
 
-		check();
-	});
+			check();
+		})
+	]);
 }
 
 run();

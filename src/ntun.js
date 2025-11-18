@@ -12,8 +12,6 @@ import { createLog, ifLog, LOG_LEVELS, log } from "./utils/log.js";
 
 const DEVELOPMENT_FLAGS = {
 	stringHash: false,
-	logConnectionMultiplexerMessages: false,
-	logPrintHexData: false,
 	logPrintPeriodicallyStatus: false
 };
 
@@ -372,11 +370,11 @@ class ConnectionMultiplexer extends EventEmitter {
 		const message = [type, connectionId, ...args];
 		const buffer = objectToBuffer(message);
 
-		if (DEVELOPMENT_FLAGS.logConnectionMultiplexerMessages) {
+		if (ifLog(LOG_LEVELS.DEBUG)) {
 			switch (type) {
 				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("send", "CONNECT", args[0], args[1]); break;
 				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("send", "CLOSE", args[0]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("send", "DATA", args[0].length, DEVELOPMENT_FLAGS.logPrintHexData && ("\n" + getHexTable(args[0]))); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("send", "DATA", args[0].length, "\n" + getHexTable(args[0])); break;
 			}
 		}
 
@@ -387,11 +385,11 @@ class ConnectionMultiplexer extends EventEmitter {
 		const message = bufferToObject(buffer);
 		const [type, connectionId, ...args] = message;
 
-		if (DEVELOPMENT_FLAGS.logConnectionMultiplexerMessages) {
+		if (ifLog(LOG_LEVELS.DEBUG)) {
 			switch (type) {
 				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("receive", "CONNECT", args[0], args[1]); break;
 				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("receive", "CLOSE", args[0]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("receive", "DATA", args[0].length, DEVELOPMENT_FLAGS.logPrintHexData && ("\n" + getHexTable(args[0]))); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("receive", "DATA", args[0].length, "\n" + getHexTable(args[0])); break;
 			}
 		}
 
@@ -435,9 +433,8 @@ class Node extends EventEmitter {
 		this.handleConnectionOnStopped = this.handleConnectionOnStopped.bind(this);
 
 		if (ifLog(LOG_LEVELS.INFO)) {
-			this.log("created");
-
-			if (this.name !== this.id) this.log("node id", chalk.green(this.id));
+			if (this.name !== this.id) this.log("created", chalk.green(this.id));
+			else this.log("created");
 		}
 	}
 
@@ -651,6 +648,8 @@ class Transport extends EventEmitter {
 		this._socket = null;
 
 		this.workingState = WORKING_STATE.IDLE;
+
+		if (ifLog(LOG_LEVELS.INFO)) this.log("created");
 	}
 
 	createLog() { throw new Error("Not implemented"); }
@@ -707,7 +706,7 @@ class Transport extends EventEmitter {
 		if (this._socket === newSocket) return;
 
 		if (!newSocket) {
-			if (ifLog(LOG_LEVELS.INFO)) this.log("disconnected");
+			this.printDisconnectedLog();
 
 			this.emit("disconnected");
 		}
@@ -715,10 +714,18 @@ class Transport extends EventEmitter {
 		this._socket = newSocket;
 
 		if (newSocket) {
-			if (ifLog(LOG_LEVELS.INFO)) this.log("connected");
+			this.printConnectedLog();
 
 			this.emit("connected");
 		}
+	}
+
+	printConnectedLog() {
+		if (ifLog(LOG_LEVELS.INFO)) this.log("connected");
+	}
+
+	printDisconnectedLog() {
+		if (ifLog(LOG_LEVELS.INFO)) this.log("disconnected");
 	}
 
 	get isConnected() {
@@ -837,8 +844,6 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 			this.socketDestroyedByStopCalled = false;
 
 			this.socket = this.enhanceSocket(socket);
-
-			if (ifLog(LOG_LEVELS.INFO)) this.log("connected", chalk.magenta(`${this.socket.localAddress}:${this.socket.localPort}`), "--", chalk.magenta(`${this.socket.remoteAddress}:${this.socket.remotePort}`));
 		}
 	}
 
@@ -855,6 +860,10 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 		if (ifLog(LOG_LEVELS.INFO)) this.log("disconnected", this.socket.remoteAddress, this.socket.remotePort);
 
 		this.socket = null;
+	}
+
+	printConnectedLog() {
+		if (ifLog(LOG_LEVELS.INFO)) this.log("connected", chalk.magenta(`${this.socket.localAddress}:${this.socket.localPort}`), "--", chalk.magenta(`${this.socket.remoteAddress}:${this.socket.remotePort}`));
 	}
 }
 
@@ -921,8 +930,6 @@ class BufferSocketClientTransport extends BufferSocketTransport {
 				this.socket = socket;
 
 				this.connecting = false;
-
-				if (ifLog(LOG_LEVELS.INFO)) this.log("connected", chalk.magenta(`${this.socket.localAddress}:${this.socket.localPort}`), "--", chalk.magenta(`${this.socket.remoteAddress}:${this.socket.remotePort}`));
 			});
 	}
 
@@ -955,6 +962,10 @@ class BufferSocketClientTransport extends BufferSocketTransport {
 
 		if (!this.connecting) this.connecting = true;
 		this.attemptToConnectTimeout = setTimeout(this.attemptToConnect, connectionAttemptTimeout);
+	}
+
+	printConnectedLog() {
+		if (ifLog(LOG_LEVELS.INFO)) this.log("connected", chalk.magenta(`${this.socket.localAddress}:${this.socket.localPort}`), "--", chalk.magenta(`${this.socket.remoteAddress}:${this.socket.remotePort}`));
 	}
 }
 
