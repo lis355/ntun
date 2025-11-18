@@ -739,8 +739,6 @@ class BufferSocketTransport extends Transport {
 	}
 
 	enhanceSocket(socket) {
-		socket = bufferSocket.enhanceSocket(socket);
-
 		socket
 			.on("error", this.handleSocketOnError)
 			.on("close", this.handleSocketOnClose);
@@ -766,20 +764,23 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 
 		this.port = port;
 
+		this.handleServerOnError = this.handleServerOnError.bind(this);
 		this.handleServerOnClose = this.handleServerOnClose.bind(this);
 		this.handleServerOnListening = this.handleServerOnListening.bind(this);
 		this.handleServerOnConnection = this.handleServerOnConnection.bind(this);
 	}
 
-	createServer() { }
-	destroyServer() { }
+	createServer() { throw new Error("Not implemented"); }
+	destroyServer() { throw new Error("Not implemented"); }
 
 	startServer() {
 		this.createServer();
 		this.subscribeOnServer();
 
-		this.server.listen(this.port, ALL_INTERFACES);
+		this.listenServer(ALL_INTERFACES);
 	}
+
+	listenServer(host) { throw new Error("Not implemented"); }
 
 	closeServer() {
 		this.server.close();
@@ -805,6 +806,7 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 
 	subscribeOnServer() {
 		this.server
+			.on("error", this.handleServerOnError)
 			.on("close", this.handleServerOnClose)
 			.on("listening", this.handleServerOnListening)
 			.on("connection", this.handleServerOnConnection);
@@ -812,9 +814,14 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 
 	unsubscribeFromServer() {
 		this.server
+			.off("error", this.handleServerOnError)
 			.off("close", this.handleServerOnClose)
 			.off("listening", this.handleServerOnListening)
 			.off("connection", this.handleServerOnConnection);
+	}
+
+	handleServerOnError(error) {
+		if (ifLog(LOG_LEVELS.INFO)) this.log("error", error.message);
 	}
 
 	handleServerOnClose() {
@@ -866,6 +873,12 @@ class BufferSocketServerTransport extends BufferSocketTransport {
 	}
 }
 
+function enhanceTCPSocket(socket) {
+	socket = bufferSocket.enhanceSocket(socket);
+
+	return socket;
+}
+
 class TCPBufferSocketServerTransport extends BufferSocketServerTransport {
 	createLog() {
 		this.log = createLog("[transport]", "[tcp-server]");
@@ -873,6 +886,14 @@ class TCPBufferSocketServerTransport extends BufferSocketServerTransport {
 
 	createServer() {
 		this.server = net.createServer();
+	}
+
+	listenServer(host) {
+		this.server.listen(this.port, host);
+	}
+
+	enhanceSocket(socket) {
+		return super.enhanceSocket(enhanceTCPSocket(socket));
 	}
 }
 
@@ -976,6 +997,10 @@ class TCPBufferSocketClientTransport extends BufferSocketClientTransport {
 	createSocket() {
 		return net.connect(this.port, this.host);
 	}
+
+	enhanceSocket(socket) {
+		return super.enhanceSocket(enhanceTCPSocket(socket));
+	}
 }
 
 function enhanceWebSocket(webSocket) {
@@ -1002,8 +1027,12 @@ class WebSocketBufferSocketServerTransport extends BufferSocketServerTransport {
 		this.server = new ws.WebSocketServer({ host: ALL_INTERFACES, port: this.port });
 	}
 
-	enhanceSocket(webSocket) {
-		return enhanceWebSocket(webSocket);
+	listenServer(host) {
+		// listen called in WebSocketServer constructor
+	}
+
+	enhanceSocket(socket) {
+		return super.enhanceSocket(enhanceWebSocket(socket));
 	}
 }
 
@@ -1016,8 +1045,8 @@ class WebSocketBufferSocketClientTransport extends BufferSocketClientTransport {
 		return new ws.WebSocket(`ws://${this.host}:${this.port}`);
 	}
 
-	enhanceSocket(webSocket) {
-		return enhanceWebSocket(webSocket);
+	enhanceSocket(socket) {
+		return super.enhanceSocket(enhanceWebSocket(socket));
 	}
 }
 

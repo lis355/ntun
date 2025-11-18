@@ -13,12 +13,12 @@ async function run() {
 
 	const serverTransport = new WebRTCPeerServerTransport(iceServers);
 	const serverNode = new ntun.Node();
-	serverNode.outputConnection = new ntun.outputConnections.DirectOutputConnection(serverNode);
+	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);
 	serverNode.transport = serverTransport;
 
 	const clientTransport = new WebRTCPeerClientTransport(iceServers);
 	const clientNode = new ntun.Node();
-	clientNode.inputConnection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
+	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
 	clientNode.transport = clientTransport;
 
 	serverTransport

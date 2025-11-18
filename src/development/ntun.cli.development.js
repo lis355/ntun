@@ -3,7 +3,6 @@ import childProcess from "node:child_process";
 import { config as dotenv } from "dotenv-flow";
 
 import exec from "./exec.js";
-import { log } from "../utils/log.js";
 import urlTests from "./urlTests.js";
 
 dotenv();
@@ -37,14 +36,15 @@ async function testConfiguration(serverStr, clientStr) {
 	await new Promise(resolve => setTimeout(resolve, 1000));
 
 	const clientProcess = executeChildProcess(clientStr);
-	await new Promise(resolve => setTimeout(resolve, 1000));
-
-	await urlTests(8080);
-
-	serverProcess.kill("SIGKILL");
-	clientProcess.kill("SIGKILL");
-
 	await new Promise(resolve => setTimeout(resolve, 3000));
+
+	const socks5InputConnectionPort = 3080;
+	await urlTests(socks5InputConnectionPort);
+
+	serverProcess.kill();
+	clientProcess.kill();
+
+	await new Promise(resolve => setTimeout(resolve, 1000));
 }
 
 async function run() {
@@ -52,24 +52,24 @@ async function run() {
 	await exec("curl -s https://jdam.am/api/ip");
 
 	await testConfiguration(
-		"node ./src/ntun.cli.js -o -t tcp 8081",
-		"node ./src/ntun.cli.js -i 8080 -t tcp localhost:8081"
-	);
-
-	await testConfiguration(
-		"node ./src/ntun.cli.js -o -t ws 8081",
-		"node ./src/ntun.cli.js -i 8080 -t ws localhost:8081"
+		"node ./src/ntun.cli.js -o -t tcp 3081",
+		"node ./src/ntun.cli.js -i 3080 -t tcp localhost:3081"
 	);
 
 	// await testConfiguration(
-	// 	`node ./src/ntun.cli.js -o -t webrtc "${process.env.DEVELOP_WEB_RTC_SERVERS}"`,
-	// 	`node ./src/ntun.cli.js -i 8080 -t webrtc "${process.env.DEVELOP_WEB_RTC_SERVERS}"`
+	// 	"node ./src/ntun.cli.js -o -t ws 3081",
+	// 	"node ./src/ntun.cli.js -i 3080 -t ws localhost:3081"
 	// );
 
-	await testConfiguration(
-		`node ./src/ntun.cli.js -o -t vk-calls "${process.env.DEVELOP_VK_JOIN_ID_OR_LINK}"`,
-		`node ./src/ntun.cli.js -i 8080 -t vk-calls "${process.env.DEVELOP_VK_JOIN_ID_OR_LINK}"`
-	);
+	// await testConfiguration(
+	// 	`node ./src/ntun.cli.js -o -t webrtc "${process.env.DEVELOP_WEB_RTC_SERVERS}"`,
+	// 	`node ./src/ntun.cli.js -i 3080 -t webrtc "${process.env.DEVELOP_WEB_RTC_SERVERS}"`
+	// );
+
+	// await testConfiguration(
+	// 	`node ./src/ntun.cli.js -o -t vk-calls "${process.env.DEVELOP_VK_JOIN_ID_OR_LINK}"`,
+	// 	`node ./src/ntun.cli.js -i 3080 -t vk-calls "${process.env.DEVELOP_VK_JOIN_ID_OR_LINK}"`
+	// );
 }
 
 run();

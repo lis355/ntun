@@ -14,12 +14,12 @@ async function run() {
 
 	const serverTransport = new VkCallSignalServerTransport(joinId);
 	const serverNode = new ntun.Node();
-	serverNode.outputConnection = new ntun.outputConnections.DirectOutputConnection(serverNode);
+	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);
 	serverNode.transport = serverTransport;
 
 	const clientTransport = new VkCallSignalServerTransport(joinId);
 	const clientNode = new ntun.Node();
-	clientNode.inputConnection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
+	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
 	clientNode.transport = clientTransport;
 
 	serverTransport

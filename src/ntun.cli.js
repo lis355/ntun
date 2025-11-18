@@ -1,7 +1,10 @@
+import os from "node:os";
+
+import chalk from "chalk";
 import figlet from "figlet";
 import parser from "yargs-parser";
 
-import { log } from "./utils/log.js";
+import { log, setLogLevel, LOG_LEVELS } from "./utils/log.js";
 import ntun from "./ntun.js";
 
 import VkTransport from "./transport/vk-calls/VkTransport.js";
@@ -13,7 +16,7 @@ const argv = process.argv.slice(2);
 // const argv = "TEST";
 
 const args = parser(argv, {
-	alias: { input: "i", output: "o", transport: "t" },
+	alias: { verbose: "v", input: "i", output: "o", transport: "t" },
 	array: ["transport"]
 });
 
@@ -43,7 +46,22 @@ const TRANSPORT = {
 async function run() {
 	printLogo();
 
-	log(`NodeJS ${process.version}, OS ${process.platform}`);
+	log(`NodeJS ${process.version}, OS ${os.version()}`);
+
+	let logLevel = LOG_LEVELS.INFO;
+	if (args.verbose === undefined) logLevel = LOG_LEVELS.INFO;
+	else if (args.verbose === true) logLevel = LOG_LEVELS.INFO;
+	else if (args.verbose === 0) logLevel = LOG_LEVELS.INFO;
+	else if (args.verbose === 1) logLevel = LOG_LEVELS.DETAILED;
+	else if (args.verbose >= 2) logLevel = LOG_LEVELS.DEBUG;
+	else if (Array.isArray(args.verbose) &&
+		args.verbose.every(Boolean)) {
+		if (args.verbose.length === 1) logLevel = LOG_LEVELS.INFO;
+		else if (args.verbose.length === 2) logLevel = LOG_LEVELS.DETAILED;
+		else if (args.verbose.length >= 3) logLevel = LOG_LEVELS.DEBUG;
+	} else throw new Error("Invalid verbose level");
+
+	setLogLevel(logLevel);
 
 	const node = new ntun.Node();
 
@@ -53,15 +71,11 @@ async function run() {
 	if (args.input) {
 		if (!checkPort(args.input)) throw new Error("Invalid input port");
 
-		node.inputConnection = new ntun.inputConnections.Socks5InputConnection(node, { port: args.input });
-
-		log("Input connection", node.inputConnection.constructor.name, "created");
+		node.connection = new ntun.inputConnections.Socks5InputConnection(node, { port: args.input });
 	}
 
 	if (args.output) {
-		node.outputConnection = new ntun.outputConnections.DirectOutputConnection(node);
-
-		log("Output connection", node.outputConnection.constructor.name, "created");
+		node.connection = new ntun.outputConnections.DirectOutputConnection(node);
 	}
 
 	if (!args.transport ||
@@ -69,7 +83,7 @@ async function run() {
 
 	switch (args.transport[0]) {
 		case TRANSPORT.TCP: {
-			if (node.inputConnection) {
+			if (args.input) {
 				try {
 					let [host, port] = args.transport[1].split(":");
 					port = Number(port);
@@ -79,7 +93,7 @@ async function run() {
 				} catch {
 					throw new Error("Invalid transport URL");
 				}
-			} else if (node.outputConnection) {
+			} else if (args.output) {
 				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
 
 				node.transport = new ntun.transports.TCPBufferSocketServerTransport(args.transport[1]);
@@ -88,7 +102,7 @@ async function run() {
 			break;
 		}
 		case TRANSPORT.WEBSOCKET: {
-			if (node.inputConnection) {
+			if (args.input) {
 				try {
 					let [host, port] = args.transport[1].split(":");
 					port = Number(port);
@@ -98,7 +112,7 @@ async function run() {
 				} catch {
 					throw new Error("Invalid transport URL");
 				}
-			} else if (node.outputConnection) {
+			} else if (args.output) {
 				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
 
 				node.transport = new ntun.transports.WebSocketBufferSocketServerTransport(args.transport[1]);
@@ -114,9 +128,9 @@ async function run() {
 				throw new Error("Invalid ice servers json");
 			}
 
-			if (node.inputConnection) {
+			if (args.input) {
 				node.transport = new WebRTCTransport.WebRTCPeerClientTransport(iceServers);
-			} else if (node.outputConnection) {
+			} else if (args.output) {
 				node.transport = new WebRTCTransport.WebRTCPeerServerTransport(iceServers);
 			}
 
@@ -130,9 +144,9 @@ async function run() {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 
-			if (node.inputConnection) {
+			if (args.input) {
 				node.transport = new VkTransport.VkWebRTCTransport(joinId);
-			} else if (node.outputConnection) {
+			} else if (args.output) {
 				node.transport = new VkTransport.VkWebRTCTransport(joinId);
 			}
 
@@ -146,9 +160,9 @@ async function run() {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 
-			if (node.inputConnection) {
+			if (args.input) {
 				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
-			} else if (node.outputConnection) {
+			} else if (args.output) {
 				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
 			}
 
@@ -159,25 +173,12 @@ async function run() {
 			throw new Error("Invalid transport");
 	}
 
-	log("Transport", node.transport.constructor.name, "created");
-
-	node.transport
-		.on("connected", () => {
-			log("Transport", node.transport.constructor.name, "connected");
-
-			node.start();
-		})
-		.on("disconnected", () => {
-			log("Transport", node.transport.constructor.name, "disconnected");
-
-			node.stop();
-		});
-
+	node.start();
 	node.transport.start();
 }
 
 run().catch(error => {
-	log(error.message);
+	log(chalk.red(error.message));
 
-	process.exit(1);
+	return process.exit(1);
 });
