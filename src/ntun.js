@@ -1070,11 +1070,11 @@ function enhanceWebSocket(webSocket) {
 		let decryptedBuffer;
 		try {
 			decryptedBuffer = symmetricBufferCipher.decrypt(message);
+
+			webSocket.emit("buffer", decryptedBuffer);
 		} catch {
 			webSocket.emit("error", new Error("Decryption error"));
 		}
-
-		webSocket.emit("buffer", decryptedBuffer);
 	});
 
 	Object.defineProperty(webSocket, "localAddress", { get: () => webSocket._socket.localAddress });
