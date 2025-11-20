@@ -225,7 +225,11 @@ class Connection extends EventEmitter {
 
 	handleSocketMultiplexerOnClose(connectionId, errorMessage) {
 		const connection = this.connections.get(connectionId);
+
+		// такое возможно, если на обоих концах транспорта сокеты оборвали соединения
 		if (!connection) return;
+
+		connection.wasClosed = true;
 
 		if (errorMessage) {
 			if (ifLog(LOG_LEVELS.DETAILED)) this.log("remote connection error", connectionId, errorMessage);
@@ -259,7 +263,7 @@ class Connection extends EventEmitter {
 			error: this.handleConnectionSocketOnError.bind(this, connection),
 			connect: this.handleConnectionSocketOnConnect.bind(this, connection),
 			ready: this.handleConnectionSocketOnReady.bind(this, connection),
-			close: this.handleConnectionSocketOnClose.bind(this, connection, false),
+			close: this.handleConnectionSocketOnClose.bind(this, connection),
 			data: this.handleConnectionSocketOnData.bind(this, connection)
 		};
 
@@ -278,7 +282,7 @@ class Connection extends EventEmitter {
 			.off("error", connection.listeners.error)
 			.off("connect", connection.listeners.connect)
 			.off("ready", connection.listeners.ready)
-			.off("close", connection.listeners.close)
+			// .off("close", connection.listeners.close)
 			.off("data", connection.listeners.data);
 
 		this.connections.delete(connection.connectionId);
@@ -304,6 +308,10 @@ class Connection extends EventEmitter {
 
 	handleConnectionSocketOnClose(connection) {
 		if (ifLog(LOG_LEVELS.DETAILED)) this.log(`closed with [${connection.socket.remoteAddress}:${connection.socket.remotePort}]`);
+
+		connection.connected = false;
+
+		if (connection.wasClosed) return;
 
 		this.deleteConnection(connection);
 
@@ -370,9 +378,12 @@ class ConnectionMultiplexer extends EventEmitter {
 
 		if (ifLog(LOG_LEVELS.DEBUG)) {
 			switch (type) {
-				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("send", "CONNECT", args[0], args[1]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("send", "CLOSE", args[0]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("send", "DATA", args[0].length, "\n" + getHexTable(args[0])); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("send", "CONN", connectionId, args[0], args[1]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("send", "CLSE", connectionId, args[0]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA:
+					connectionMultiplexerLog("send", "DATA", connectionId, args[0].length);
+					// connectionMultiplexerLog(getHexTable(args[0]));
+					break;
 			}
 		}
 
@@ -385,9 +396,12 @@ class ConnectionMultiplexer extends EventEmitter {
 
 		if (ifLog(LOG_LEVELS.DEBUG)) {
 			switch (type) {
-				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("receive", "CONNECT", args[0], args[1]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("receive", "CLOSE", args[0]); break;
-				case ConnectionMultiplexer.MESSAGE_TYPES.DATA: connectionMultiplexerLog("receive", "DATA", args[0].length, "\n" + getHexTable(args[0])); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: connectionMultiplexerLog("recv", "CONN", connectionId, args[0], args[1]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: connectionMultiplexerLog("recv", "CLSE", connectionId, args[0]); break;
+				case ConnectionMultiplexer.MESSAGE_TYPES.DATA:
+					connectionMultiplexerLog("recv", "DATA", connectionId, args[0].length);
+					// connectionMultiplexerLog(getHexTable(args[0]));
+					break;
 			}
 		}
 
@@ -586,7 +600,7 @@ class Socks5InputConnection extends InputConnection {
 		const connection = this.createConnection(connectionId, socket);
 		this.handleConnectionSocketOnConnect(connection);
 
-		if (ifLog(LOG_LEVELS.DETAILED)) this.log(`[${connection.socket.remoteAddress}:${connection.socket.remotePort}] socks proxies to [${info.dstAddr}:${info.dstPort}]`);
+		if (ifLog(LOG_LEVELS.INFO)) this.log(`[${connection.socket.remoteAddress}:${connection.socket.remotePort}] proxies to [${info.dstAddr}:${info.dstPort}]`);
 
 		this.sendSocketMultiplexerConnect(connectionId, info.dstAddr, info.dstPort);
 	}
@@ -629,7 +643,7 @@ class DirectOutputConnection extends OutputConnection {
 	}
 
 	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
-		if (ifLog(LOG_LEVELS.DETAILED)) this.log(`output internet connection to [${destinationHost}:${destinationPort}]`);
+		if (ifLog(LOG_LEVELS.INFO)) this.log(`output internet connection to [${destinationHost}:${destinationPort}]`);
 
 		const destinationSocket = net.connect(destinationPort, destinationHost);
 

@@ -2,10 +2,9 @@ import { config as dotenv } from "dotenv-flow";
 
 import { setLogLevel, LOG_LEVELS } from "../../utils/log.js";
 import exec from "../exec.js";
-import getJoinId from "../../transport/vk-calls/getJoinId.js";
 import ntun from "../../ntun.js";
 import urlTests from "../urlTests.js";
-import VkCallSignalServerTransport from "../../transport/vk-calls/VkCallSignalServerTransport.js";
+import VkTransport from "../../transport/vk-calls/VkTransport.js";
 import waits from "../waits.js";
 
 dotenv();
@@ -13,16 +12,16 @@ dotenv();
 setLogLevel(LOG_LEVELS.INFO);
 
 async function run() {
-	const joinId = getJoinId(process.env.DEVELOP_VK_JOIN_ID_OR_LINK);
+	const joinId = VkTransport.getJoinId(process.env.DEVELOP_VK_JOIN_ID_OR_LINK);
 	const socks5InputConnectionPort = 8080;
 
 	const serverNode = new ntun.Node();
 	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);
-	serverNode.transport = new VkCallSignalServerTransport(joinId);
+	serverNode.transport = new VkTransport.VkCallSignalServerTransport(joinId);
 
 	const clientNode = new ntun.Node();
 	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
-	clientNode.transport = new VkCallSignalServerTransport(joinId);
+	clientNode.transport = new VkTransport.VkCallSignalServerTransport(joinId);
 
 	await Promise.all([
 		new Promise(async resolve => {

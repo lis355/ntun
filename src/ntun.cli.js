@@ -155,7 +155,7 @@ async function run() {
 		case TRANSPORT.VK_CALLS: {
 			let joinId;
 			try {
-				joinId = getJoinId(args.transport[1]);
+				joinId = VkTransport.getJoinId(args.transport[1]);
 			} catch {
 				throw new Error("Invalid vk call joinId or join link");
 			}
