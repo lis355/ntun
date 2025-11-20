@@ -1,4 +1,6 @@
-// maximumChunkSize 32 kB
+const MAXIMUM_BUFFER_SIZE = 256 * 1024 ** 2; // 256 mB
+const MAXIMUM_CHUNK_SIZE = 32 * 1024; // 32 kB
+
 export default class BufferSocket {
 	static STATE_READ_LENGTH = 0;
 	static STATE_READ_BUFFER = 1;
@@ -12,7 +14,7 @@ export default class BufferSocket {
 
 	constructor(options) {
 		this.options = options || {};
-		this.maximumChunkSize = this.options.maximumChunkSize = this.options.maximumChunkSize || 32 * 1024;
+		this.maximumChunkSize = this.options.maximumChunkSize = this.options.maximumChunkSize || MAXIMUM_CHUNK_SIZE;
 
 		this.sizeToRead = 4;
 		this.state = BufferSocket.STATE_READ_LENGTH;
@@ -31,7 +33,7 @@ export default class BufferSocket {
 	}
 
 	writeBuffer(buffer) {
-		if (buffer.length > 0x7FFFFFFF) throw new Error("Buffer too large");
+		if (buffer.length > MAXIMUM_BUFFER_SIZE) throw new Error("Buffer too large");
 
 		const lengthBuffer = Buffer.allocUnsafe(4);
 		lengthBuffer.writeUInt32BE(buffer.length, 0);
@@ -55,24 +57,37 @@ export default class BufferSocket {
 
 	processData() {
 		while (this.chunksTotalSize >= this.sizeToRead) {
-			const concatenatedChunks = this.chunks.length > 1 ? Buffer.concat(this.chunks) : this.chunks[0];
-			this.chunksTotalSize -= this.sizeToRead;
-			this.chunks = this.chunksTotalSize !== 0 ? [concatenatedChunks.subarray(this.sizeToRead)] : [];
+			let chunksToReadAmount = 0;
+			let chunksToReadSize = 0;
+			while (chunksToReadSize < this.sizeToRead) chunksToReadSize += this.chunks[chunksToReadAmount++].length;
 
+			if (chunksToReadAmount > 1) this.chunks.unshift(Buffer.concat(this.chunks.splice(0, chunksToReadAmount)));
+
+			let chunk = this.chunks[0];
+			let nextSizeToRead;
 			switch (this.state) {
 				case BufferSocket.STATE_READ_LENGTH:
-					this.sizeToRead = concatenatedChunks.readUInt32BE(0);
+					nextSizeToRead = chunk.readUInt32BE(0);
 					this.state = BufferSocket.STATE_READ_BUFFER;
 					break;
 
 				case BufferSocket.STATE_READ_BUFFER:
-					const buffer = concatenatedChunks.length > this.sizeToRead ? concatenatedChunks.subarray(0, this.sizeToRead) : concatenatedChunks;
-					this.pushBuffer(buffer);
+					this.pushBuffer(chunk.length > this.sizeToRead ? chunk.subarray(0, this.sizeToRead) : chunk);
 
-					this.sizeToRead = 4;
+					nextSizeToRead = 4;
 					this.state = BufferSocket.STATE_READ_LENGTH;
 					break;
 			}
+
+			if (chunk.length > this.sizeToRead) {
+				this.chunks[0] = chunk.subarray(this.sizeToRead);
+			} else {
+				this.chunks.shift();
+			}
+
+			this.chunksTotalSize -= this.sizeToRead;
+
+			this.sizeToRead = nextSizeToRead;
 		}
 	}
 
