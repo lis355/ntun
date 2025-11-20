@@ -118,11 +118,10 @@ export class VkWebSocketSignalServer extends EventEmitter {
 		this.webSocket
 			.off("error", this.handleWebSocketOnError)
 			.off("open", this.handleWebSocketOnOpen)
-			.off("close", this.handleWebSocketOnClose)
+			// .off("close", this.handleWebSocketOnClose)
 			.off("message", this.handleWebSocketOnMessage);
 
 		this.webSocket.close();
-		this.webSocket = null;
 	}
 
 	handleWebSocketOnError(error) {
@@ -130,11 +129,19 @@ export class VkWebSocketSignalServer extends EventEmitter {
 	}
 
 	handleWebSocketOnOpen() {
-		this.emit("open");
+		this.emit("started");
 	}
 
 	handleWebSocketOnClose() {
-		this.emit("close");
+		this.webSocket
+			.off("error", this.handleWebSocketOnError)
+			.off("open", this.handleWebSocketOnOpen)
+			.off("close", this.handleWebSocketOnClose)
+			.off("message", this.handleWebSocketOnMessage);
+
+		this.webSocket = null;
+
+		this.emit("stopped");
 	}
 
 	handleWebSocketOnMessage(data) {
@@ -152,7 +159,7 @@ export class VkWebSocketSignalServer extends EventEmitter {
 		} catch {
 		}
 
-		if (ifLog(LOG_LEVELS.DEBUG)) log("VkWebSocketSignalServer", "recieve", data);
+		// if (ifLog(LOG_LEVELS.DEBUG)) log("VkWebSocketSignalServer", "recieve", data);
 
 		if (data === "ping") this.send("pong");
 
