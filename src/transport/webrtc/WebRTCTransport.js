@@ -1,11 +1,12 @@
+import chalk from "chalk";
+
 import { createLog, ifLog, LOG_LEVELS } from "../../utils/log.js";
 import { WebRTCDataChannelPeer, WebRTCPeer } from "./WebRTCPeer.js";
 import ntun from "../../ntun.js";
-import TransportCipherBufferSocketWrapper from "../../utils/sockets/TransportCipherBufferSocketWrapper.js";
 
 class WebRTCTransport extends ntun.Transport {
-	constructor() {
-		super();
+	constructor(options) {
+		super(options);
 
 		// must be settled before call start
 		this.iceServers = null;
@@ -16,7 +17,6 @@ class WebRTCTransport extends ntun.Transport {
 		this.handlePeerOnDataChannelClosed = this.handlePeerOnDataChannelClosed.bind(this);
 		this.handlePeerOnDataChannelMessage = this.handlePeerOnDataChannelMessage.bind(this);
 		this.handleSocketOnError = this.handleSocketOnError.bind(this);
-		this.handleSocketOnWriteBuffer = this.handleSocketOnWriteBuffer.bind(this);
 	}
 
 	start() {
@@ -30,8 +30,7 @@ class WebRTCTransport extends ntun.Transport {
 
 		if (this.transportSocket) {
 			this.transportSocket
-				.off("error", this.handleSocketOnError)
-				.off("writeBuffer", this.handleSocketOnWriteBuffer);
+				.off("error", this.handleSocketOnError);
 
 			this.transportSocket = null;
 		}
@@ -61,7 +60,6 @@ class WebRTCTransport extends ntun.Transport {
 	destroyPeer() {
 		this.peer
 			.off("connected", this.handlePeerOnConnected)
-			// .off("disconnected", this.handlePeerOnDisconnected)
 			.off("dataChannelOpened", this.handlePeerOnDataChannelOpened)
 			.off("dataChannelClosed", this.handlePeerOnDataChannelClosed)
 			.off("dataChannelMessage", this.handlePeerOnDataChannelMessage);
@@ -82,7 +80,7 @@ class WebRTCTransport extends ntun.Transport {
 	}
 
 	async checkTurnServerConnection() {
-		if (ifLog(LOG_LEVELS.INFO)) this.log("checking turn server connection");
+		if (ifLog(LOG_LEVELS.INFO)) this.log("checking turn server connection", chalk.magenta(this.iceServers.map(iceServer => iceServer.urls).flat().join(", ")));
 
 		let success = true;
 		let errorMessage;
@@ -105,7 +103,7 @@ class WebRTCTransport extends ntun.Transport {
 		if (!success) this.emit("error", new Error(`TURN server connection failed: ${errorMessage}`));
 
 		if (success) {
-			if (ifLog(LOG_LEVELS.INFO)) this.log("connecting to turn server success");
+			if (ifLog(LOG_LEVELS.INFO)) this.log("connecting to turn server success", chalk.magenta(this.peer.iceCandidates.filter(iceCandidate => iceCandidate.type === "relay").map(iceCandidate => `${iceCandidate.address}:${iceCandidate.port}`).join(", ")));
 		}
 
 		return success;
@@ -164,8 +162,7 @@ class WebRTCTransport extends ntun.Transport {
 
 		if (this.transportSocket) {
 			this.transportSocket
-				.off("error", this.handleSocketOnError)
-				.off("writeBuffer", this.handleSocketOnWriteBuffer);
+				.off("error", this.handleSocketOnError);
 
 			this.transportSocket = null;
 		}
@@ -174,17 +171,24 @@ class WebRTCTransport extends ntun.Transport {
 	}
 
 	handlePeerOnDataChannelOpened() {
-		this.transportSocket = new TransportCipherBufferSocketWrapper();
+		this.transportSocket = new ntun.transports.TransportSocket({
+			write: data => {
+				if (ifLog(LOG_LEVELS.DEBUG)) this.log("socket write data");
+
+				const arrayBuffer = WebRTCPeer.bufferToArrayBuffer(data);
+				this.peer.sendDataChannelMessage(arrayBuffer);
+			},
+			...this.options
+		});
+
 		this.transportSocket
-			.on("error", this.handleSocketOnError)
-			.on("writeBuffer", this.handleSocketOnWriteBuffer);
+			.on("error", this.handleSocketOnError);
 	}
 
 	handlePeerOnDataChannelClosed() {
 		if (this.transportSocket) {
 			this.transportSocket
-				.off("error", this.handleSocketOnError)
-				.off("writeBuffer", this.handleSocketOnWriteBuffer);
+				.off("error", this.handleSocketOnError);
 
 			this.transportSocket = null;
 		}
@@ -202,7 +206,7 @@ class WebRTCTransport extends ntun.Transport {
 		if (ifLog(LOG_LEVELS.DEBUG)) this.log("message");
 
 		const buffer = WebRTCPeer.arrayBufferToBuffer(message);
-		this.transportSocket.pushBuffer(buffer);
+		this.transportSocket.push(buffer);
 	}
 
 	handleSocketOnError(error) {
@@ -210,20 +214,13 @@ class WebRTCTransport extends ntun.Transport {
 
 		this.stop();
 	}
-
-	handleSocketOnWriteBuffer(buffer) {
-		if (ifLog(LOG_LEVELS.DEBUG)) this.log("socket write buffer");
-
-		const arrayBuffer = WebRTCPeer.bufferToArrayBuffer(buffer);
-		this.peer.sendDataChannelMessage(arrayBuffer);
-	}
 }
 
 class WebRTCPeerTransport extends WebRTCTransport {
-	constructor(iceServers) {
-		super();
+	constructor(options) {
+		super(options);
 
-		this.iceServers = iceServers;
+		this.iceServers = this.options.iceServers;
 	}
 }
 

@@ -788,6 +788,20 @@ class TransportSocket extends EventEmitter {
 		this.options.write(chunk);
 	}
 
+	pushBuffer(buffer) {
+		try {
+			for (const middlewares of this.middlewares) buffer = middlewares.performInBuffer(buffer);
+
+			this.emit("buffer", buffer);
+		} catch (error) {
+			this.emit("error", error);
+		}
+	}
+
+	push(chunk) {
+		this.emit("data", chunk);
+	}
+
 	handleOnData(chunk) {
 		this.chunks.push(chunk);
 		this.chunksTotalSize += chunk.length;
@@ -828,16 +842,6 @@ class TransportSocket extends EventEmitter {
 			this.chunksTotalSize -= this.sizeToRead;
 
 			this.sizeToRead = nextSizeToRead;
-		}
-	}
-
-	pushBuffer(buffer) {
-		try {
-			for (const middlewares of this.middlewares) buffer = middlewares.performInBuffer(buffer);
-
-			this.emit("buffer", buffer);
-		} catch (error) {
-			this.emit("error", error);
 		}
 	}
 
@@ -1089,7 +1093,7 @@ function createTransportSocketForTCPSocket(socket, options) {
 		transportSocket.close();
 	};
 
-	const onData = chunk => transportSocket.handleOnData(chunk);
+	const onData = chunk => transportSocket.push(chunk);
 
 	transportSocket.socket = socket;
 	transportSocket.socket
@@ -1243,7 +1247,7 @@ function createTransportSocketForWebSocket(webSocket, options) {
 		transportSocket.close();
 	};
 
-	const onMessage = message => transportSocket.handleOnData(message);
+	const onMessage = message => transportSocket.push(message);
 
 	transportSocket.webSocket = webSocket;
 	transportSocket.webSocket
@@ -1309,6 +1313,8 @@ export default {
 		DirectOutputConnection
 	},
 	transports: {
+		TransportSocket,
+
 		ServerTransport,
 		ClientTransport,
 

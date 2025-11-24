@@ -19,14 +19,33 @@ setLogLevel(LOG_LEVELS.INFO);
 async function run() {
 	const iceServers = JSON.parse(process.env.DEVELOP_WEB_RTC_SERVERS);
 	const socks5InputConnectionPort = 8080;
+	const rateLimitBytesPerSecond = 31250; // 250 kbps / 0.25 mbps ~ slow 3g
+	const useSimpleSignalServer = false;
 
 	const serverNode = new ntun.Node();
 	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);
-	serverNode.transport = new WebRTCTransport.WebRTCPeerServerTransport(iceServers);
 
 	const clientNode = new ntun.Node();
 	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });
-	clientNode.transport = new WebRTCTransport.WebRTCPeerClientTransport(iceServers);
+
+	global.setLogLevelInfo = () => setLogLevel(LOG_LEVELS.INFO);
+	global.setLogLevelDebug = () => setLogLevel(LOG_LEVELS.DEBUG);
+	global.serverNode = serverNode;
+	global.outConnection = serverNode.connection;
+	global.clientNode = clientNode;
+	global.inConnection = clientNode.connection;
+
+	const transportOptions = {
+		rateLimit: {
+			bytesPerSecond: rateLimitBytesPerSecond
+		},
+		cipher: true
+	};
+
+	serverNode.transport = new WebRTCTransport.WebRTCPeerServerTransport({ iceServers, ...transportOptions });
+	clientNode.transport = new WebRTCTransport.WebRTCPeerClientTransport({ iceServers, ...transportOptions });
+
+	let offer, answer;
 
 	serverNode.transport
 		.on("error", error => {
@@ -37,20 +56,32 @@ async function run() {
 		.on("sdp.offer", async sdp => {
 			log("offer created");
 
-			await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
-				method: "POST",
-				body: JSON.stringify(sdp)
-			});
+			if (useSimpleSignalServer) {
+				await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
+					method: "POST",
+					body: JSON.stringify(sdp)
+				});
+			} else {
+				offer = sdp;
+			}
 
 			const waitForAnswer = async () => {
 				log("waitForAnswer");
 
-				const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
-					method: "GET"
-				});
+				let sdpAnswer;
+				if (useSimpleSignalServer) {
+					const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
+						method: "GET"
+					});
 
-				if (response.status === 200) {
-					const sdpAnswer = await response.json();
+					if (response.status === 200) {
+						sdpAnswer = await response.json();
+					}
+				} else {
+					sdpAnswer = answer;
+				}
+
+				if (sdpAnswer) {
 					serverNode.transport.setAnswer(sdpAnswer);
 
 					log("answer settled");
@@ -71,22 +102,36 @@ async function run() {
 		.on("sdp.answer", async sdp => {
 			log("answer created");
 
-			await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
-				method: "POST",
-				body: JSON.stringify(sdp)
-			});
+			if (useSimpleSignalServer) {
+				await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/answer", {
+					method: "POST",
+					body: JSON.stringify(sdp)
+				});
+			} else {
+				answer = sdp;
+			}
 		});
 
 	const waitForOffer = async () => {
 		log("waitForOffer");
 
-		const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
-			method: "GET"
-		});
+		let sdpOffer;
+		if (useSimpleSignalServer) {
+			const response = await fetch(process.env.DEVELOP_SIMPLE_SIGNAL_SERVER_URL + "/offer", {
+				method: "GET"
+			});
 
-		if (response.status === 200) {
-			const sdpOffer = await response.json();
+			if (response.status === 200) {
+				sdpOffer = await response.json();
+			}
+		} else {
+			sdpOffer = offer;
+		}
+
+		if (sdpOffer) {
 			clientNode.transport.createAnswer(sdpOffer);
+
+			log("answer created");
 		} else {
 			setTimeout(waitForOffer, 1000);
 		}

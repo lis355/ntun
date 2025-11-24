@@ -67,8 +67,6 @@ export default class DataRateLimiter {
 
 			this.options.send(bufferToSend);
 			this.intervalWrittenBytesAmount += bufferToSend.length;
-			// process.stdout.write("\x1b[A\x1b[K");
-			// console.log("raw send", this.intervalStartProcessingTime, this.intervalWrittenBytesAmount);
 		}
 
 		if (this.rateLimitQueue.length > 0) this.rateLimitTimer = setTimeout(this.processRateLimitQueue, this.options.rateLimitInterval);
