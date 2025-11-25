@@ -135,13 +135,7 @@ class Connection extends EventEmitter {
 
 		this.emitWillStop();
 
-		for (const [connectionId, connection] of this.connections) {
-			if (this.node.transport.isConnected) this.sendSocketMultiplexerClose(connectionId, "abort");
-
-			this.deleteConnection(connection);
-
-			connection.socket.destroy();
-		}
+		this.destroyAllConnections();
 
 		this.unsubscribeFromConnectionMultiplexer();
 
@@ -150,6 +144,14 @@ class Connection extends EventEmitter {
 		this.node.transport
 			.off("connected", this.handleOnTransportConnected)
 			.off("disconnected", this.handleOnTransportDisconnected);
+	}
+
+	destroyAllConnections() {
+		for (const [connectionId, connection] of this.connections) {
+			this.deleteConnection(connection);
+
+			connection.socket.destroy();
+		}
 	}
 
 	emitWillStop() {
@@ -173,6 +175,8 @@ class Connection extends EventEmitter {
 	}
 
 	handleOnTransportDisconnected() {
+		this.destroyAllConnections();
+
 		this.unsubscribeFromConnectionMultiplexer();
 
 		this.connectionMultiplexer.socket = null;
@@ -297,7 +301,8 @@ class Connection extends EventEmitter {
 
 		connection.connected = false;
 
-		if (connection.wasClosed) return;
+		if (connection.wasClosed ||
+			!this.node.transport.isConnected) return;
 
 		this.deleteConnection(connection);
 
@@ -349,42 +354,17 @@ class ConnectionMultiplexer extends EventEmitter {
 	sendMessageConnect(connectionId, destinationHost, destinationPort) {
 		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CONNECT, connectionId, destinationHost, destinationPort);
 
-		// const destinationHostBufferSizeBuffer = Buffer.allocUnsafe(2);
-		// const destinationHostBuffer = Buffer.from(destinationHost, "utf8");
-		// destinationHostBufferSizeBuffer.writeUInt16LE(destinationHostBuffer.length, 0);
-		// const destinationPortBuffer = Buffer.allocUnsafe(2);
-		// destinationPortBuffer.writeUInt16LE(destinationPort, 0);
-
-		// this.sendMessage(connectionId, ConnectionMultiplexer.MESSAGE_TYPES.CONNECT, [
-		// 	destinationHostBufferSizeBuffer,
-		// 	destinationHostBuffer,
-		// 	destinationPortBuffer
-		// ]);
-
 		if (ifLog(LOG_LEVELS.DEBUG)) connectionMultiplexerLog("send", "CONN", connectionId, destinationHost, destinationPort);
 	}
 
 	sendMessageClose(connectionId, errorMessage = null) {
 		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.CLOSE, connectionId, errorMessage);
 
-		// const errorMessageSizeBuffer = Buffer.allocUnsafe(2);
-		// const errorMessageBuffer = Buffer.from(errorMessage || "", "utf8");
-		// errorMessageSizeBuffer.writeUInt16LE(errorMessageBuffer.length, 0);
-
-		// this.sendMessage(connectionId, ConnectionMultiplexer.MESSAGE_TYPES.CLOSE, [
-		// 	errorMessageSizeBuffer,
-		// 	errorMessageBuffer
-		// ]);
-
 		if (ifLog(LOG_LEVELS.DEBUG)) connectionMultiplexerLog("send", "CLSE", connectionId, errorMessage);
 	}
 
 	sendMessageData(connectionId, data) {
 		this.sendMessage(ConnectionMultiplexer.MESSAGE_TYPES.DATA, connectionId, data);
-
-		// this.sendMessage(connectionId, ConnectionMultiplexer.MESSAGE_TYPES.DATA, [
-		// 	data
-		// ]);
 
 		if (ifLog(LOG_LEVELS.DEBUG)) {
 			connectionMultiplexerLog("send", "DATA", connectionId, data.length);
@@ -399,34 +379,13 @@ class ConnectionMultiplexer extends EventEmitter {
 		this.socket.writeBuffer(buffer);
 	}
 
-	// sendMessage(connectionId, messageType, buffers) {
-	// 	const connectionIdBuffer = Buffer.allocUnsafe(4);
-	// 	connectionIdBuffer.writeUInt32LE(connectionId, 0);
-	// 	const messageTypeBuffer = Buffer.allocUnsafe(1);
-	// 	messageTypeBuffer.writeUInt8(messageType, 0);
-
-	// 	this.socket.writeBuffer(Buffer.concat([
-	// 		connectionIdBuffer,
-	// 		messageTypeBuffer,
-	// 		...buffers
-	// 	]));
-	// }
-
 	async handleSocketOnBuffer(buffer) {
 		const message = bufferToObject(buffer);
 		const [messageType, connectionId, ...args] = message;
 
-		// let position = 0;
-		// const connectionId = buffer.readUInt32LE(position); position += 4;
-		// const messageType = buffer.readUInt8(position); position += 1;
-
 		switch (messageType) {
 			case ConnectionMultiplexer.MESSAGE_TYPES.CONNECT: {
 				const [destinationHost, destinationPort] = args;
-
-				// const destinationHostLength = buffer.readUInt16LE(position); position += 2;
-				// const destinationHost = buffer.subarray(position, position + destinationHostLength).toString("utf8"); position += destinationHostLength;
-				// const destinationPort = buffer.readUInt16LE(position); position += 2;
 
 				if (ifLog(LOG_LEVELS.DEBUG)) connectionMultiplexerLog("recv", "CONN", connectionId, destinationHost, destinationPort);
 
@@ -437,9 +396,6 @@ class ConnectionMultiplexer extends EventEmitter {
 			case ConnectionMultiplexer.MESSAGE_TYPES.CLOSE: {
 				const [errorMessage] = args;
 
-				// const errorMessageLength = buffer.readUInt16LE(position); position += 2;
-				// const errorMessage = buffer.subarray(position, position + errorMessageLength).toString("utf8"); position += errorMessageLength;
-
 				if (ifLog(LOG_LEVELS.DEBUG)) connectionMultiplexerLog("recv", "CLSE", connectionId, errorMessage);
 
 				this.emit("close", connectionId, errorMessage);
@@ -448,8 +404,6 @@ class ConnectionMultiplexer extends EventEmitter {
 			}
 			case ConnectionMultiplexer.MESSAGE_TYPES.DATA: {
 				const [data] = args;
-
-				// const data = buffer.subarray(position);
 
 				if (ifLog(LOG_LEVELS.DEBUG)) {
 					connectionMultiplexerLog("recv", "DATA", connectionId, data.length);
@@ -688,8 +642,6 @@ class DirectOutputConnection extends OutputConnection {
 		connection.destinationPort = destinationPort;
 	}
 }
-
-const transportLog = createLog("[transport]");
 
 class TransportSocketMiddleware {
 	performOutBuffer(buffer) {

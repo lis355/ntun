@@ -236,6 +236,11 @@ async function run() {
 
 	node.start();
 	node.transport.start();
+
+	global.ntun = {
+		node,
+		transport: node.transport
+	};
 }
 
 run().catch(error => {
