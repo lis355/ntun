@@ -2,6 +2,7 @@ import timersPromises from "timers/promises";
 
 import { config as dotenv } from "dotenv-flow";
 
+import { parseTransferRate } from "../../utils/DataRateLimiter.js";
 import { setLogLevel, LOG_LEVELS } from "../../utils/log.js";
 import getJoinId from "../../transport/vk-calls/getJoinId.js";
 import ntun from "../../ntun.js";
@@ -15,7 +16,7 @@ setLogLevel(LOG_LEVELS.INFO);
 async function run() {
 	const joinId = getJoinId(process.env.DEVELOP_VK_JOIN_ID_OR_LINK);
 	const socks5InputConnectionPort = 8080;
-	const rateLimitBytesPerSecond = 31250; // 250 kbps / 0.25 mbps ~ slow 3g
+	const rateLimitBytesPerSecond = parseTransferRate("250 kbps"); // 0.25 mbps ~ slow 3g
 
 	const serverNode = new ntun.Node();
 	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);

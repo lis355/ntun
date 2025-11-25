@@ -2,6 +2,7 @@ import timersPromises from "timers/promises";
 
 import { config as dotenv } from "dotenv-flow";
 
+import { parseTransferRate } from "../../utils/DataRateLimiter.js";
 import { setLogLevel, LOG_LEVELS } from "../utils/log.js";
 import ntun from "../ntun.js";
 import urlTests from "./urlTests.js";
@@ -16,7 +17,7 @@ async function run() {
 	const transportPort = 8081;
 	const transportHost = "127.0.0.1";
 	const socks5InputConnectionPort = 8080;
-	const rateLimitBytesPerSecond = 31250; // 250 kbps / 0.25 mbps ~ slow 3g
+	const rateLimitBytesPerSecond = parseTransferRate("250 kbps"); // 0.25 mbps ~ slow 3g
 	const testClientConnectionAttempts = true;
 
 	const serverNode = new ntun.Node({ name: "out" });

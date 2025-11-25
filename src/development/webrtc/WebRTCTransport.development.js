@@ -1,6 +1,9 @@
+import timersPromises from "timers/promises";
+
 import { config as dotenv } from "dotenv-flow";
 
 import { log, setLogLevel, LOG_LEVELS } from "../../utils/log.js";
+import { parseTransferRate } from "../../utils/DataRateLimiter.js";
 import ntun from "../../ntun.js";
 import urlTests from "../urlTests.js";
 import waits from "../waits.js";
@@ -19,7 +22,7 @@ setLogLevel(LOG_LEVELS.INFO);
 async function run() {
 	const iceServers = JSON.parse(process.env.DEVELOP_WEB_RTC_SERVERS);
 	const socks5InputConnectionPort = 8080;
-	const rateLimitBytesPerSecond = 31250; // 250 kbps / 0.25 mbps ~ slow 3g
+	const rateLimitBytesPerSecond = parseTransferRate("250 kbps"); // 0.25 mbps ~ slow 3g
 	const useSimpleSignalServer = false;
 
 	const serverNode = new ntun.Node();
@@ -147,6 +150,9 @@ async function run() {
 			clientNode.start();
 
 			clientNode.transport.start();
+
+			await timersPromises.setTimeout(3000);
+
 			serverNode.transport.start();
 
 			return resolve();
