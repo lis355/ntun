@@ -5,6 +5,7 @@ build/
 buildfiles/
 dist/
 temp/
+tmp/
 out/
 dumps/
 

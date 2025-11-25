@@ -1,10 +1,14 @@
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 
 import chalk from "chalk";
 import figlet from "figlet";
 import parser from "yargs-parser";
+import YAML from "yaml";
 
 import { log, setLogLevel, LOG_LEVELS } from "./utils/log.js";
+import { parseTransferRate } from "./utils/DataRateLimiter.js";
 import ntun from "./ntun.js";
 
 import VkTransport from "./transport/vk-calls/VkTransport.js";
@@ -12,11 +16,9 @@ import VkTransport from "./transport/vk-calls/VkTransport.js";
 import info from "../package.json" with { type: "json" };
 
 const argv = process.argv.slice(2);
-// const argv = "TEST";
 
 const args = parser(argv, {
-	alias: { verbose: "v", input: "i", output: "o", transport: "t" },
-	array: ["transport"]
+	alias: { verbose: "v", config: "c" }
 });
 
 function printLogo() {
@@ -28,24 +30,38 @@ function printLogo() {
 	);
 }
 
+function checkHost(host) {
+	try {
+		new URL(host);
+
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function checkPort(port) {
 	return Number.isFinite(port) &&
 		port >= 0 &&
 		port <= 65535;
 }
 
+const INPUT_TYPES = {
+	SOCKS5: "socks5"
+};
+
+const OUTPUT_TYPES = {
+	DIRECT: "direct"
+};
+
 const TRANSPORT = {
 	TCP: "tcp",
 	WEBSOCKET: "ws",
-	VK_WEBRTC: "vk-webrtc",
-	VK_CALLS: "vk-calls"
+	VK_CALLS: "vk-calls",
+	VK_WEBRTC: "vk-webrtc"
 };
 
-async function run() {
-	printLogo();
-
-	log(`NodeJS ${process.version}, OS ${os.version()}`);
-
+function processLogLevel() {
 	let logLevel = LOG_LEVELS.INFO;
 	if (args.verbose === undefined) logLevel = LOG_LEVELS.INFO;
 	else if (args.verbose === true) logLevel = LOG_LEVELS.INFO;
@@ -60,76 +76,115 @@ async function run() {
 	} else throw new Error("Invalid verbose level");
 
 	setLogLevel(logLevel);
+}
+
+let config;
+
+function processConfig() {
+	const configPath = path.resolve(args.config || "config.yaml");
+	if (!fs.existsSync(configPath)) throw new Error(`Config not found at ${configPath}`);
+
+	try {
+		config = YAML.parse(fs.readFileSync(configPath).toString());
+	} catch (error) {
+		throw new Error(`Error in parsing config file at ${configPath} (${error.message})`);
+	}
+}
+
+function parseRateLimit() {
+	const rateLimit = config.transport.rateLimit;
+	if (!rateLimit) return null;
+
+	let rateLimitBytesPerSecond;
+	if (Number.isFinite(rateLimit)) {
+		if (rateLimit === 0) return null;
+		else if (rateLimit < 0) throw new Error("Invalid rate limit");
+		else rateLimitBytesPerSecond = rateLimit;
+	} else if (typeof rateLimit === "string") rateLimitBytesPerSecond = parseTransferRate(rateLimit);
+	else throw new Error("Invalid rate limit");
+
+	return {
+		bytesPerSecond: rateLimitBytesPerSecond
+	};
+}
+
+async function run() {
+	printLogo();
+	log(`NodeJS ${process.version}, OS ${os.version()}`);
+
+	processLogLevel();
+	processConfig();
 
 	const node = new ntun.Node();
 
-	if (!args.input && !args.output ||
-		args.input && args.output) throw new Error("One of input or output must be specified");
+	if (!config.input && !config.output ||
+		config.input && config.output) throw new Error("One of input or output must be specified");
 
-	if (args.input) {
-		if (!checkPort(args.input)) throw new Error("Invalid input port");
+	if (config.input) {
+		switch (config.input.type) {
+			case INPUT_TYPES.SOCKS5: {
+				const port = config.input.port;
+				if (!checkPort(port)) throw new Error("Invalid port");
 
-		node.connection = new ntun.inputConnections.Socks5InputConnection(node, { port: args.input });
+				node.connection = new ntun.inputConnections.Socks5InputConnection(node, { port });
+
+				break;
+			}
+			default: throw new Error(`Unknown input type ${config.input.type}`);
+		}
 	}
 
-	if (args.output) {
-		node.connection = new ntun.outputConnections.DirectOutputConnection(node);
+	if (config.output) {
+		switch (config.output.type) {
+			case OUTPUT_TYPES.DIRECT: {
+				node.connection = new ntun.outputConnections.DirectOutputConnection(node);
+
+				break;
+			}
+			default: throw new Error(`Unknown output type ${config.input.type}`);
+		}
 	}
 
-	if (!args.transport ||
-		args.transport.length === 0) throw new Error("Transport must be specified");
+	if (!config.transport) throw new Error("Transport must be specified");
 
-	switch (args.transport[0]) {
+	const transportOptions = {};
+	let transportConstructor = null;
+
+	switch (config.transport.type) {
 		case TRANSPORT.TCP: {
-			if (args.input) {
-				try {
-					let [host, port] = args.transport[1].split(":");
-					port = Number(port);
-					if (!checkPort(port)) throw new Error("Invalid transport port");
+			const host = config.transport.host;
+			if (host &&
+				!checkHost(host)) throw new Error("Invalid host");
 
-					node.transport = new ntun.transports.TCPBufferSocketClientTransport(host, port);
-				} catch {
-					throw new Error("Invalid transport URL");
-				}
-			} else if (args.output) {
-				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
+			const port = config.transport.port;
+			if (!checkPort(port)) throw new Error("Invalid port");
 
-				node.transport = new ntun.transports.TCPBufferSocketServerTransport(args.transport[1]);
+			transportOptions.host = host;
+			transportOptions.port = port;
+
+			if (config.input) {
+				transportConstructor = ntun.transports.TCPClientTransport;
+			} else if (config.output) {
+				transportConstructor = ntun.transports.TCPServerTransport;
 			}
 
 			break;
 		}
 		case TRANSPORT.WEBSOCKET: {
-			if (args.input) {
-				try {
-					let [host, port] = args.transport[1].split(":");
-					port = Number(port);
-					if (!checkPort(port)) throw new Error("Invalid transport port");
+			const host = config.transport.host;
+			if (host &&
+				!checkHost(host)) throw new Error("Invalid host");
 
-					node.transport = new ntun.transports.WebSocketBufferSocketClientTransport(host, port);
-				} catch {
-					throw new Error("Invalid transport URL");
-				}
-			} else if (args.output) {
-				if (!checkPort(args.transport[1])) throw new Error("Invalid transport port");
+			const port = config.transport.port;
+			if (!checkPort(port)) throw new Error("Invalid port");
 
-				node.transport = new ntun.transports.WebSocketBufferSocketServerTransport(args.transport[1]);
-			}
+			transportOptions.host = host;
+			transportOptions.port = port;
 
-			break;
-		}
-		case TRANSPORT.VK_WEBRTC: {
-			let joinId;
-			try {
-				joinId = VkTransport.getJoinId(args.transport[1]);
-			} catch {
-				throw new Error("Invalid vk call joinId or join link");
-			}
-
-			if (args.input) {
-				node.transport = new VkTransport.VkWebRTCTransport(joinId);
-			} else if (args.output) {
-				node.transport = new VkTransport.VkWebRTCTransport(joinId);
+			if (config.input) {
+				transportConstructor = ntun.transports.WebSocketClientTransport;
+			} else if (config.output) {
+				transportConstructor = ntun.transports.WebSocketServerTransport;
 			}
 
 			break;
@@ -137,23 +192,47 @@ async function run() {
 		case TRANSPORT.VK_CALLS: {
 			let joinId;
 			try {
-				joinId = VkTransport.getJoinId(args.transport[1]);
+				joinId = VkTransport.getJoinId(config.transport.joinId || config.transport.joinLink);
 			} catch {
 				throw new Error("Invalid vk call joinId or join link");
 			}
 
-			if (args.input) {
-				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
-			} else if (args.output) {
-				node.transport = new VkTransport.VkCallSignalServerTransport(joinId);
+			transportOptions.joinId = joinId;
+
+			if (config.input) {
+				transportConstructor = VkTransport.VkCallSignalServerTransport;
+			} else if (config.output) {
+				transportConstructor = VkTransport.VkCallSignalServerTransport;
 			}
 
 			break;
 		}
+		case TRANSPORT.VK_WEBRTC: {
+			let joinId;
+			try {
+				joinId = VkTransport.getJoinId(config.transport.joinId || config.transport.joinLink);
+			} catch {
+				throw new Error("Invalid vk call joinId or join link");
+			}
 
-		default:
-			throw new Error("Invalid transport");
+			transportOptions.joinId = joinId;
+
+			if (config.input) {
+				transportConstructor = VkTransport.VkWebRTCTransport;
+			} else if (config.output) {
+				transportConstructor = VkTransport.VkWebRTCTransport;
+			}
+
+			break;
+		}
+		default: throw new Error(`Unknown transport type ${config.transport.type}`);
 	}
+
+	transportOptions.cipher = config.transport.cipher;
+
+	transportOptions.rateLimit = parseRateLimit();
+
+	node.transport = new transportConstructor(transportOptions);
 
 	node.start();
 	node.transport.start();

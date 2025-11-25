@@ -8,7 +8,7 @@ import msgpack from "msgpack5";
 import socks from "socksv5";
 
 import { createLog, ifLog, LOG_LEVELS } from "./utils/log.js";
-import DataRateLimiter from "./utils/DataRateLimiter.js";
+import { DataRateLimiter, stringifyTransferRate } from "./utils/DataRateLimiter.js";
 import symmetricBufferCipher from "./utils/symmetricBufferCipher.js";
 
 function getHexTable(buffer, offset = 0, length = null, bytesPerLine = 32) {
@@ -689,6 +689,8 @@ class DirectOutputConnection extends OutputConnection {
 	}
 }
 
+const transportLog = createLog("[transport]");
+
 class TransportSocketMiddleware {
 	performOutBuffer(buffer) {
 		return buffer;
@@ -735,7 +737,9 @@ class TransportSocket extends EventEmitter {
 		this.middlewares = [];
 
 		if (this.options.cipher === undefined ||
-			this.options.cipher) this.middlewares.push(new TransportSocketSimpleCipherMiddleware());
+			this.options.cipher) {
+			this.middlewares.push(new TransportSocketSimpleCipherMiddleware());
+		}
 
 		if (this.options.rateLimit &&
 			this.options.rateLimit.bytesPerSecond) {
@@ -861,6 +865,16 @@ class Transport extends EventEmitter {
 		this.workingState = WORKING_STATE.IDLE;
 
 		if (ifLog(LOG_LEVELS.INFO)) this.log("created");
+
+		if (this.options.cipher === undefined ||
+			this.options.cipher) {
+			if (ifLog(LOG_LEVELS.INFO)) this.log("using simple cipher");
+		}
+
+		if (this.options.rateLimit &&
+			this.options.rateLimit.bytesPerSecond) {
+			if (ifLog(LOG_LEVELS.INFO)) this.log("using rate limiter", stringifyTransferRate(this.options.rateLimit.bytesPerSecond));
+		}
 	}
 
 	createLog() { throw new Error("Not implemented"); }

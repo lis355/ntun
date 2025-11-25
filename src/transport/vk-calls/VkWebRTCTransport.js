@@ -86,8 +86,7 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 	}
 
 	async handleVkWebSocketSignalServerOnReady() {
-		// DEBUG
-		this.log = createLog("[transport]", "[vk-call]", this.vkWebSocketSignalServer.participantId);
+		// this.log = createLog("[transport]", "[vk-call]", this.vkWebSocketSignalServer.participantId);
 
 		if (ifLog(LOG_LEVELS.INFO)) this.log("vk signal server participantId", this.vkWebSocketSignalServer.participantId, "conversationId", this.vkWebSocketSignalServer.conversationId);
 
