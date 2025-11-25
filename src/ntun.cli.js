@@ -81,7 +81,7 @@ function processLogLevel() {
 let config;
 
 function processConfig() {
-	const configPath = path.resolve(args.config || "config.yaml");
+	const configPath = path.resolve(args.config || args._[0] || "config.yaml");
 	if (!fs.existsSync(configPath)) throw new Error(`Config not found at ${configPath}`);
 
 	try {
