@@ -121,6 +121,7 @@ export class YandexTelemostWebSocketSignalServer extends EventEmitter {
 
 			if (json.serverHello) {
 				this.serverHello = json.serverHello;
+				this.iceServers = this.serverHello.rtcConfiguration.iceServers;
 
 				this.emit("ready");
 			} else {

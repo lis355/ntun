@@ -5,6 +5,7 @@ import getJoinId from "./getJoinId.js";
 import ntun from "../../ntun.js";
 import symmetricBufferCipher from "../../utils/symmetricBufferCipher.js";
 import WebRTCTransport from "../webrtc/WebRTCTransport.js";
+import YandexMailCommunication from "./YandexMailCommunication.js";
 
 // Транспорт, использующий TURN сервера
 // Для получения TURN сервера и создания webrtc коннекта используется WebSocketSignalServer
@@ -20,6 +21,10 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 		this.handleSignalServerOnReady = this.handleSignalServerOnReady.bind(this);
 		this.handleSignalServerOnMessage = this.handleSignalServerOnMessage.bind(this);
 		this.handleSignalServerOnNotification = this.handleSignalServerOnNotification.bind(this);
+		this.handleMailCommunicationOnError = this.handleMailCommunicationOnError.bind(this);
+		this.handleMailCommunicationOnStarted = this.handleMailCommunicationOnStarted.bind(this);
+		this.handleMailCommunicationOnStopped = this.handleMailCommunicationOnStopped.bind(this);
+		this.handleMailCommunicationOnMessage = this.handleMailCommunicationOnMessage.bind(this);
 		this.handleOnSdpOffer = this.handleOnSdpOffer.bind(this);
 		this.handleOnSdpAnswer = this.handleOnSdpAnswer.bind(this);
 
@@ -48,6 +53,20 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 			.on("notification", this.handleSignalServerOnNotification);
 
 		this.signalServer.start();
+
+		this.mailCommunication = new YandexMailCommunication({
+			user: this.options.mailCommunication.user,
+			password: this.options.mailCommunication.password,
+			opponent: this.options.mailCommunication.opponent
+		});
+
+		this.mailCommunication
+			.on("error", this.handleMailCommunicationOnError)
+			.on("started", this.handleMailCommunicationOnStarted)
+			.on("stopped", this.handleMailCommunicationOnStopped)
+			.on("message", this.handleMailCommunicationOnMessage);
+
+		this.mailCommunication.start();
 	}
 
 	stop() {
@@ -64,6 +83,8 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 
 	handleSignalServerOnError(error) {
 		if (ifLog(LOG_LEVELS.DETAILED)) this.log("ya signal server error", error.message);
+
+		this.stop();
 	}
 
 	handleSignalServerOnStarted() {
@@ -91,7 +112,7 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 
 		if (ifLog(LOG_LEVELS.INFO)) this.log("ya signal server participantId", this.signalServer.participantId, "roomId", this.signalServer.roomId);
 
-		this.iceServers = this.signalServer.serverHello.rtcConfiguration.iceServers.filter(iceServer => iceServer.urls.every(url => url.startsWith("turn")));
+		this.iceServers = this.signalServer.iceServers.filter(iceServer => iceServer.urls.every(url => url.startsWith("turn")));
 
 		if (ifLog(LOG_LEVELS.DEBUG)) this.log("iceServers", JSON.stringify(this.iceServers));
 
@@ -100,13 +121,6 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 		if (this.turnServerConnectionSuccess) {
 			this.setStateConnecting();
 		}
-	}
-
-	sendConnectToOpponentParticipants() {
-		Object.values(this.participants)
-			.forEach(participant => {
-				this.sendMessageToParticipant(participant.id, MESSAGE_TYPES.CONNECT);
-			});
 	}
 
 	handleSignalServerOnMessage(message) {
@@ -267,15 +281,13 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 
 		this.destroyTransportSocket();
 
-		// this.sendConnectToOpponentParticipants();
+		this.isOfferPeer = this.options.starter;
+		this.offerParticipantId = this.isOfferPeer ? this.signalServer.participantId : null;
 
-		this.isOfferPeer = true;
-		this.offerParticipantId = this.signalServer.participantId;
+		this.isAnswerPeer = !this.isOfferPeer;
+		this.answerParticipantId = this.isOfferPeer ? null : this.signalServer.participantId;
 
-		this.isAnswerPeer = false;
-		this.answerParticipantId = null;
-
-		this.startOfferConnection();
+		if (this.isOfferPeer) this.startOfferConnection();
 	}
 
 	setStateConnected(participantId, { sendAccept }) {
@@ -326,19 +338,37 @@ export class YandexTelemostWebRTCTransport extends WebRTCTransport.WebRTCTranspo
 	}
 
 	handleOnSdpOffer(sdpOffer) {
-		this.signalServer.sendRequest({
-			publisherSdpOffer: {
-				pcSeq: 1,
-				sdp: sdpOffer.sdp,
-				tracks: []
-			}
-		});
-
-		// this.sendMessageToParticipant(this.opponentParticipantId, MESSAGE_TYPES.SDP_OFFER, { sdp: sdpOffer });
+		this.sendMessageToParticipant(this.opponentParticipantId, MESSAGE_TYPES.SDP_OFFER, { sdp: sdpOffer });
 	}
 
 	handleOnSdpAnswer(sdpAnswer) {
 		this.sendMessageToParticipant(this.opponentParticipantId, MESSAGE_TYPES.SDP_ANSWER, { sdp: sdpAnswer });
+	}
+
+	handleMailCommunicationOnError(error) {
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log("ya mail server error", error.message);
+
+		this.stop();
+	}
+
+	handleMailCommunicationOnStarted() {
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log("ya mail server started");
+	}
+
+	handleMailCommunicationOnStopped() {
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log("ya mail server stopped");
+
+		this.mailCommunication
+			.off("error", this.handleMailCommunicationOnError)
+			.off("started", this.handleMailCommunicationOnStarted)
+			.off("stopped", this.handleMailCommunicationOnStopped)
+			.off("message", this.handleMailCommunicationOnMessage);
+
+		this.mailCommunication = null;
+	}
+
+	handleMailCommunicationOnMessage(message) {
+
 	}
 }
 

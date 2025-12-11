@@ -15,6 +15,7 @@ setLogLevel(LOG_LEVELS.DEBUG);
 
 async function run() {
 	const joinId = YandexTelemostTransport.getJoinId(process.env.DEVELOP_YA_TELEMOST_JOIN_ID_OR_LINK);
+	const [mailClientUser, mailClientPassword, mailServerUser, mailServerPassword] = process.env.DEVELOP_YA_MAIL_CLIENT_AND_SERVER.split(",").map(s => s.trim());
 	const socks5InputConnectionPort = 8080;
 	const rateLimitBytesPerSecond = parseTransferRate("250 kbps"); // 0.25 mbps ~ slow 3g
 
@@ -38,8 +39,26 @@ async function run() {
 		cipher: true
 	};
 
-	serverNode.transport = new YandexTelemostTransport.YandexTelemostWebRTCTransport({ joinId, ...transportOptions });
-	clientNode.transport = new YandexTelemostTransport.YandexTelemostWebRTCTransport({ joinId, ...transportOptions });
+	serverNode.transport = new YandexTelemostTransport.YandexTelemostWebRTCTransport({
+		joinId,
+		mailCommunication: {
+			user: mailServerUser,
+			password: mailServerPassword,
+			opponent: mailClientUser
+		},
+		...transportOptions
+	});
+
+	clientNode.transport = new YandexTelemostTransport.YandexTelemostWebRTCTransport({
+		joinId,
+		mailCommunication: {
+			user: mailClientUser,
+			password: mailClientPassword,
+			opponent: mailServerUser
+		},
+		starter: true,
+		...transportOptions
+	});
 
 	await Promise.all([
 		new Promise(async resolve => {
