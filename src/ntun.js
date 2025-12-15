@@ -970,7 +970,7 @@ class Transport extends EventEmitter {
 	}
 }
 
-class ClientServerTransport extends Transport {
+class CommonClientServerTransport extends Transport {
 	constructor(options) {
 		super(options);
 
@@ -1015,7 +1015,7 @@ class ClientServerTransport extends Transport {
 	}
 }
 
-class ServerTransport extends ClientServerTransport {
+class ServerTransport extends CommonClientServerTransport {
 	constructor(options) {
 		super(options);
 
@@ -1149,7 +1149,7 @@ class TCPServerTransport extends ServerTransport {
 
 const TRANSPORT_CONNECTION_TIMEOUT = 3 * 1000;
 
-class ClientTransport extends ClientServerTransport {
+class ClientTransport extends CommonClientServerTransport {
 	constructor(options) {
 		super(options);
 
@@ -1222,11 +1222,6 @@ class ClientTransport extends ClientServerTransport {
 
 	handleSocketOnConnect() {
 		this.socketDestroyedByStopCalled = false;
-
-		this.socket
-			.off("error", this.handleSocketOnError)
-			.off("close", this.handleSocketOnClose)
-			.off("connect", this.handleSocketOnConnect);
 
 		this.transportSocket = this.createTransportSocket(this.socket);
 
