@@ -2,7 +2,7 @@ import timersPromises from "timers/promises";
 
 import { config as dotenv } from "dotenv-flow";
 
-import { parseTransferRate } from "../../utils/DataRateLimiter.js";
+import { parseTransferRate } from "../utils/DataRateLimiter.js";
 import { setLogLevel, LOG_LEVELS } from "../utils/log.js";
 import ntun from "../ntun.js";
 import urlTests from "./urlTests.js";
@@ -22,6 +22,7 @@ async function run() {
 
 	const serverNode = new ntun.Node({ name: "out" });
 	serverNode.connection = new ntun.outputConnections.DirectOutputConnection(serverNode);
+	// serverNode.connection = new ntun.outputConnections.Socks5OutputConnection(serverNode, { host: "192.168.1.1", port: 1071 });
 
 	const clientNode = new ntun.Node({ name: "in" });
 	clientNode.connection = new ntun.inputConnections.Socks5InputConnection(clientNode, { port: socks5InputConnectionPort });

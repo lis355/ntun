@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import EventEmitter from "node:events";
 import net from "node:net";
 
+import { SocksClient } from "socks";
 import * as ws from "ws";
 import chalk from "chalk";
 import msgpack from "msgpack5";
@@ -576,7 +577,7 @@ class Socks5InputConnection extends InputConnection {
 
 	handleOnSocksServerConnection(info, accept, deny) {
 		if (!this.node.transport.isConnected) {
-			if (ifLog(LOG_LEVELS.INFO)) this.log(`connection from [${info.srcAddr}:${info.srcPort}] with proxy to [${info.dstAddr}:${info.dstPort}] denied because transport is not connected`);
+			if (ifLog(LOG_LEVELS.DETAILED)) this.log(`connection from [${info.srcAddr}:${info.srcPort}] with proxy to [${info.dstAddr}:${info.dstPort}] denied because transport is not connected`);
 
 			return deny();
 		}
@@ -633,13 +634,72 @@ class DirectOutputConnection extends OutputConnection {
 	}
 
 	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
-		if (ifLog(LOG_LEVELS.INFO)) this.log(`output internet connection to [${destinationHost}:${destinationPort}]`);
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log(`output internet connection to [${destinationHost}:${destinationPort}]`);
 
 		const destinationSocket = net.connect(destinationPort, destinationHost);
 
 		const connection = this.createConnection(connectionId, destinationSocket);
 		connection.destinationHost = destinationHost;
 		connection.destinationPort = destinationPort;
+	}
+}
+
+class Socks5OutputConnection extends OutputConnection {
+	createLog() {
+		this.log = createLog("[out]", "[socks5]");
+	}
+
+	start() {
+		super.start();
+
+		this.emitStarted();
+	}
+
+	stop() {
+		super.stop();
+
+		this.emitStopped();
+	}
+
+	handleSocketMultiplexerOnConnect(connectionId, destinationHost, destinationPort) {
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log(`output internet connection to [${destinationHost}:${destinationPort}] via proxy [${this.options.host}:${this.options.port}]`);
+
+		// TODO HACK из-за архитектуры,я думал, что createConnection вызывается для ещё не подключенного сокета
+		// пока что приходится делать этот хак с фейковым сокетом и копированием messages
+		const notConnectedSocket = new net.Socket();
+		const connection = this.createConnection(connectionId, notConnectedSocket);
+		connection.destinationHost = destinationHost;
+		connection.destinationPort = destinationPort;
+
+		SocksClient.createConnection({
+			proxy: {
+				host: this.options.host,
+				port: this.options.port,
+				type: 5
+			},
+			command: "connect",
+			destination: {
+				host: destinationHost,
+				port: destinationPort
+			}
+		})
+			.then(info => {
+				// TODO HACK из-за архитектуры,я думал, что createConnection вызывается для ещё не подключенного сокета
+				// пока что приходится делать этот хак с фейковым сокетом и копированием messages
+
+				this.deleteConnection(connection);
+
+				const realConnection = this.createConnection(connectionId, info.socket);
+				realConnection.destinationHost = destinationHost;
+				realConnection.destinationPort = destinationPort;
+				realConnection.messages = connection.messages;
+
+				this.handleConnectionSocketOnConnect(realConnection);
+				this.handleConnectionSocketOnReady(realConnection);
+			})
+			.catch(error => {
+				this.handleConnectionSocketOnError(connection, error);
+			});
 	}
 }
 
@@ -910,7 +970,7 @@ class Transport extends EventEmitter {
 	}
 }
 
-class ClientServerTransport extends Transport {
+class CommonClientServerTransport extends Transport {
 	constructor(options) {
 		super(options);
 
@@ -955,7 +1015,7 @@ class ClientServerTransport extends Transport {
 	}
 }
 
-class ServerTransport extends ClientServerTransport {
+class ServerTransport extends CommonClientServerTransport {
 	constructor(options) {
 		super(options);
 
@@ -1089,7 +1149,7 @@ class TCPServerTransport extends ServerTransport {
 
 const TRANSPORT_CONNECTION_TIMEOUT = 3 * 1000;
 
-class ClientTransport extends ClientServerTransport {
+class ClientTransport extends CommonClientServerTransport {
 	constructor(options) {
 		super(options);
 
@@ -1162,11 +1222,6 @@ class ClientTransport extends ClientServerTransport {
 
 	handleSocketOnConnect() {
 		this.socketDestroyedByStopCalled = false;
-
-		this.socket
-			.off("error", this.handleSocketOnError)
-			.off("close", this.handleSocketOnClose)
-			.off("connect", this.handleSocketOnConnect);
 
 		this.transportSocket = this.createTransportSocket(this.socket);
 
@@ -1276,7 +1331,8 @@ export default {
 		Socks5InputConnection
 	},
 	outputConnections: {
-		DirectOutputConnection
+		DirectOutputConnection,
+		Socks5OutputConnection
 	},
 	transports: {
 		TransportSocket,
