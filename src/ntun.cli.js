@@ -47,7 +47,8 @@ const INPUT_TYPES = {
 };
 
 const OUTPUT_TYPES = {
-	DIRECT: "direct"
+	DIRECT: "direct",
+	SOCKS5: "socks5"
 };
 
 const TRANSPORT = {
@@ -122,6 +123,9 @@ async function run() {
 				const port = config.input.port;
 				if (!checkPort(port)) throw new Error("Invalid port");
 
+				if (config.input.username ||
+					config.input.password) throw new Error("Authentication is not supported");
+
 				node.connection = new ntun.inputConnections.Socks5InputConnection(node, { port });
 
 				break;
@@ -134,6 +138,20 @@ async function run() {
 		switch (config.output.type) {
 			case OUTPUT_TYPES.DIRECT: {
 				node.connection = new ntun.outputConnections.DirectOutputConnection(node);
+
+				break;
+			}
+			case OUTPUT_TYPES.SOCKS5: {
+				const port = config.output.port;
+				if (!checkPort(port)) throw new Error("Invalid port");
+
+				const host = config.output.host;
+				if (!checkHost(host)) throw new Error("Invalid host");
+
+				if (config.output.username ||
+					config.output.password) throw new Error("Authentication is not supported");
+
+				node.connection = new ntun.outputConnections.Socks5OutputConnection(node, { host, port });
 
 				break;
 			}
