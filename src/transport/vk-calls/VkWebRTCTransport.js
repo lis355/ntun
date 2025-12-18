@@ -1,3 +1,5 @@
+import chalk from "chalk";
+
 import { createLog, ifLog, LOG_LEVELS } from "../../utils/log.js";
 import { getVkWebSocketSignalServerUrlByJoinId, VkWebSocketSignalServer } from "./VkWebSocketSignalServer.js";
 import { STATES, MESSAGE_TYPES } from "./constants.js";
@@ -12,6 +14,8 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 		super(options);
 
 		this.joinId = this.options.joinId;
+
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log("joinId", chalk.magenta(this.joinId));
 
 		this.handleVkWebSocketSignalServerOnError = this.handleVkWebSocketSignalServerOnError.bind(this);
 		this.handleVkWebSocketSignalServerOnStarted = this.handleVkWebSocketSignalServerOnStarted.bind(this);
@@ -37,6 +41,8 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 	async startSignalServerConnection() {
 		this.webSocketUrl = await getVkWebSocketSignalServerUrlByJoinId(this.joinId);
 
+		if (ifLog(LOG_LEVELS.DETAILED)) this.log("signal server webSocketUrl", chalk.magenta(this.webSocketUrl));
+
 		this.vkWebSocketSignalServer = new VkWebSocketSignalServer(this.webSocketUrl);
 		this.vkWebSocketSignalServer
 			.on("error", this.handleVkWebSocketSignalServerOnError)
@@ -47,6 +53,20 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 			.on("notification", this.handleVkWebSocketSignalServerOnNotification);
 
 		this.vkWebSocketSignalServer.start();
+	}
+
+	stopSignalServerConnection() {
+		this.vkWebSocketSignalServer
+			.off("error", this.handleVkWebSocketSignalServerOnError)
+			.off("started", this.handleVkWebSocketSignalServerOnStarted)
+			.off("stopped", this.handleVkWebSocketSignalServerOnStopped)
+			.off("ready", this.handleVkWebSocketSignalServerOnReady)
+			.off("message", this.handleVkWebSocketSignalServerOnMessage)
+			.off("notification", this.handleVkWebSocketSignalServerOnNotification);
+
+		this.vkWebSocketSignalServer.stop();
+
+		this.vkWebSocketSignalServer = null;
 	}
 
 	stop() {
@@ -61,8 +81,24 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 		this.webSocketUrl = null;
 	}
 
+	handlePeerOnConnected() {
+		super.handlePeerOnConnected();
+	}
+
+	handlePeerOnDisconnected() {
+		super.handlePeerOnDisconnected();
+
+		if (this.turnServerConnectionSuccess) {
+			// если уже было соединение, то останавливаем его и запускаем заново
+			this.stopSignalServerConnection();
+			this.startSignalServerConnection();
+		}
+	}
+
 	handleVkWebSocketSignalServerOnError(error) {
 		if (ifLog(LOG_LEVELS.DETAILED)) this.log("vk signal server error", error.message);
+
+		this.stop();
 	}
 
 	handleVkWebSocketSignalServerOnStarted() {
@@ -108,10 +144,15 @@ export default class VkWebRTCTransport extends WebRTCTransport.WebRTCTransport {
 	}
 
 	sendConnectToOpponentParticipants() {
-		Object.values(this.participants)
-			.forEach(participant => {
-				this.sendMessageToParticipant(participant.id, MESSAGE_TYPES.CONNECT);
-			});
+		const participants = Object.values(this.participants);
+		if (participants.length === 0) {
+			if (ifLog(LOG_LEVELS.DEBUG)) this.log("sendConnectToOpponentParticipants none participants");
+		} else {
+			participants
+				.forEach(participant => {
+					this.sendMessageToParticipant(participant.id, MESSAGE_TYPES.CONNECT);
+				});
+		}
 	}
 
 	handleVkWebSocketSignalServerOnMessage(message) {

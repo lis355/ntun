@@ -64,7 +64,8 @@
 			"program": "${workspaceFolder}/src/ntun.cli.js",
 			"console": "integratedTerminal",
 			"args": [
-				"${workspaceFolder}/configs/config.yaml"
+				"${workspaceFolder}/configs/config.yaml",
+				"-vvv"
 			]
 		}
 	]

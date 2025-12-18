@@ -44,11 +44,15 @@ export class WebRTCPeer extends EventEmitter {
 		this.iceCandidates = [];
 
 		this.peerConnection.onconnectionstatechange = event => {
+			if (ifLog(LOG_LEVELS.DEBUG)) log("onconnectionstatechange", this.peerConnection.connectionState);
+
 			switch (this.peerConnection.connectionState) {
 				case "connected":
 					this.emit("connected");
 					break;
+				case "disconnected":
 				case "closed":
+				case "failed":
 					this.emit("disconnected");
 					break;
 			}
@@ -141,9 +145,9 @@ export class WebRTCPeer extends EventEmitter {
 
 		if (ifLog(LOG_LEVELS.DEBUG)) log("offer created");
 
-		this.offer = this.peerConnection.localDescription;
+		const localDescription = this.peerConnection.localDescription;
 
-		return this.peerConnection.localDescription;
+		return { type: localDescription.type, sdp: localDescription.sdp };
 	}
 
 	async createAnswer(offer) {
@@ -157,7 +161,9 @@ export class WebRTCPeer extends EventEmitter {
 
 		if (ifLog(LOG_LEVELS.DEBUG)) log("answer created");
 
-		return this.peerConnection.localDescription;
+		const localDescription = this.peerConnection.localDescription;
+
+		return { type: localDescription.type, sdp: localDescription.sdp };
 	}
 
 	async setAnswer(answer) {
