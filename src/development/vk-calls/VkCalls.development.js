@@ -11,7 +11,7 @@ import waits from "../waits.js";
 
 dotenv();
 
-setLogLevel(LOG_LEVELS.INFO);
+setLogLevel(process.env.DEVELOP_LOG_LEVEL);
 
 async function run() {
 	const joinId = VkTransport.getJoinId(process.env.DEVELOP_VK_JOIN_ID_OR_LINK);
@@ -62,8 +62,8 @@ async function run() {
 
 	// await urlTests(socks5InputConnectionPort);
 
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} http://jdam.am:8302`);
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL}`);
 
 	clientNode.transport.stop();
 	await waits.waitForStopped(clientNode.transport);
@@ -79,8 +79,8 @@ async function run() {
 
 	await timersPromises.setTimeout(3000);
 
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} http://jdam.am:8302`);
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL}`);
 
 	await Promise.all([
 		new Promise(async resolve => {

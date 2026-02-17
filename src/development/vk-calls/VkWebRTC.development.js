@@ -11,7 +11,7 @@ import VkTransport from "../../transport/vk-calls/VkTransport.js";
 
 dotenv();
 
-setLogLevel(LOG_LEVELS.INFO);
+setLogLevel(process.env.DEVELOP_LOG_LEVEL);
 
 async function run() {
 	const joinId = getJoinId(process.env.DEVELOP_VK_JOIN_ID_OR_LINK);

@@ -10,7 +10,7 @@ import waits from "./waits.js";
 
 dotenv();
 
-setLogLevel(LOG_LEVELS.INFO);
+setLogLevel(process.env.DEVELOP_LOG_LEVEL);
 
 async function run() {
 	const transports = ["tcp", "ws"];

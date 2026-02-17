@@ -48,8 +48,8 @@ async function testConfiguration(serverStr, clientStr) {
 }
 
 async function run() {
-	await exec("curl -s http://jdam.am:8302");
-	await exec("curl -s https://jdam.am/api/ip");
+	await exec(`curl -s ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+	await exec(`curl -s ${process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL}`);
 
 	await testConfiguration(
 		"node ./src/ntun.cli.js -o -t tcp 3081",

@@ -8,14 +8,17 @@ import exec from "./exec.js";
 const log = createLog("[url-tests]");
 
 export default async function urlTests(socks5InputConnectionPort) {
-	const { stdoutString: externalIp } = await exec("curl -s http://jdam.am:8302");
+	await exec(`curl -s ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+	await exec(`curl -s ${process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL}`);
 
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} http://jdam.am:8302`);
-	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} https://jdam.am/api/ip`);
+	const { stdoutString: externalIp } = await exec(`curl -s ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL}`);
+	await exec(`curl -s -x socks5://127.0.0.1:${socks5InputConnectionPort} ${process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL}`);
 
 	const urls = [
-		"http://jdam.am:8302",
-		"https://jdam.am/api/ip",
+		process.env.DEVELOP_GET_PUBLIC_IP_HTTP_URL,
+		process.env.DEVELOP_GET_PUBLIC_IP_HTTPS_URL,
 		"https://api.ipify.org/?format=text",
 		"https://checkip.amazonaws.com/",
 		"https://icanhazip.com/"

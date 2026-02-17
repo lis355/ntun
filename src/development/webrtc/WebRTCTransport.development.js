@@ -17,7 +17,7 @@ dotenv();
 // WebRTC servers tester
 // https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
 
-setLogLevel(LOG_LEVELS.INFO);
+setLogLevel(process.env.DEVELOP_LOG_LEVEL);
 
 async function run() {
 	const iceServers = JSON.parse(process.env.DEVELOP_WEB_RTC_SERVERS);
