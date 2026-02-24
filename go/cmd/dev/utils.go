@@ -1,18 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	"ntun/cmd/app"
-	"ntun/utils/log"
 	"strings"
-	"time"
+	"sync"
 
-	"github.com/armon/go-socks5"
 	"golang.org/x/net/proxy"
 )
 
@@ -26,7 +22,6 @@ func request(proxyAddress, url string) string {
 		Transport: &http.Transport{
 			Dial: dialer.Dial,
 		},
-		Timeout: 10 * time.Second,
 	}
 
 	slog.Debug(fmt.Sprintf("[%s] %s", proxyAddress, url))
@@ -61,6 +56,7 @@ const needPrintHexDump = false
 
 type observableConn struct {
 	net.Conn
+	m sync.Mutex // for sync printing tcp hex data
 }
 
 func newObservableConn(conn net.Conn) *observableConn {
@@ -69,39 +65,73 @@ func newObservableConn(conn net.Conn) *observableConn {
 
 func (c *observableConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
+
 	if n > 0 {
 		slog.Debug(fmt.Sprintf("[%s <-- %s] read %d bytes", c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
 		if needPrintHexDump {
+			c.m.Lock()
 			printHexDump(b[:n])
+			c.m.Unlock()
 		}
 	}
+
 	return n, err
 }
 
 func (c *observableConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
+
 	if n > 0 {
 		slog.Debug(fmt.Sprintf("[%s --> %s] write %d bytes", c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
 		if needPrintHexDump {
+			c.m.Lock()
 			printHexDump(b[:n])
+			c.m.Unlock()
 		}
 	}
+
 	return n, err
 }
 
 func printHexDump(data []byte) {
+	// fmt.Printf("%s", strings.Repeat(" ", 10))
+	// for i := range 32 {
+	// 	fmt.Printf("%02X ", i)
+
+	// 	if (i+1)%8 == 0 {
+	// 		fmt.Print(" ")
+	// 	}
+	// }
+	// fmt.Print("\n")
+
+	// fmt.Printf("%s", strings.Repeat(" ", 10))
+	// for i := range 32 {
+	// 	fmt.Printf("--")
+
+	// 	if i < 31 {
+	// 		fmt.Print("-")
+	// 	}
+
+	// 	if (i+1)%8 == 0 &&
+	// 		i+1 != 32 {
+	// 		fmt.Print("-")
+	// 	}
+	// }
+	// fmt.Print("\n")
+
 	for i := 0; i < len(data); i += 32 {
-		fmt.Printf("%08X  ", i)
+		fmt.Printf("%08X| ", i)
 
 		ascii := strings.Builder{}
-		ascii.WriteString(" |")
+		ascii.WriteString("|")
 
 		for j := 0; j < 32; j++ {
 			if i+j < len(data) {
 				fmt.Printf("%02X ", data[i+j])
 
 				b := data[i+j]
-				if b >= 32 && b <= 126 {
+				if b >= 32 &&
+					b <= 126 {
 					ascii.WriteByte(b)
 				} else {
 					ascii.WriteByte('.')
@@ -111,68 +141,13 @@ func printHexDump(data []byte) {
 				ascii.WriteByte(' ')
 			}
 
-			if (j+1)%8 == 0 {
+			if (j+1)%8 == 0 &&
+				j+1 != 32 {
 				fmt.Print(" ")
 			}
 		}
 
-		fmt.Printf(" %s\n", ascii.String())
+		fmt.Print(ascii.String())
+		fmt.Print("\n")
 	}
-}
-
-func createAndListenSocks5Server(proxyServerPort int, socks5ServerReady chan bool) {
-	socks5ProxyAddress := fmt.Sprintf("socks5://localhost:%d", proxyServerPort)
-
-	conf := &socks5.Config{
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			slog.Debug(fmt.Sprintf("Connection with %s via [%s]", address, socks5ProxyAddress))
-
-			conn, err := net.Dial(network, address)
-			if err != nil {
-				return nil, err
-			}
-
-			if tcpConn, ok := conn.(*net.TCPConn); ok {
-				conn = newObservableConn(tcpConn)
-			} else {
-				panic(fmt.Errorf("Strange conn"))
-			}
-
-			return conn, nil
-		},
-	}
-
-	server, err := socks5.New(conf)
-	if err != nil {
-		panic(err)
-	}
-
-	socks5ServerReady <- true
-
-	if err := server.ListenAndServe("tcp", fmt.Sprintf(":%d", proxyServerPort)); err != nil {
-		panic(err)
-	}
-}
-
-func main() {
-	app.Initialize()
-	log.Initialize()
-
-	slog.Info("DEVELOPMENT")
-
-	slog.Info(fmt.Sprintf("%s v%s", app.Name, app.Version))
-	if app.IsDevelopment {
-		slog.Warn("Development mode")
-	}
-
-	const proxyServerPort = 8080
-
-	socks5ServerReady := make(chan bool, 1)
-	go createAndListenSocks5Server(proxyServerPort, socks5ServerReady)
-	<-socks5ServerReady
-
-	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
-
-	request(socks5ProxyAddress, "http://ifconfig.me/ip")
-	request(socks5ProxyAddress, "https://ifconfig.me/ip")
 }
