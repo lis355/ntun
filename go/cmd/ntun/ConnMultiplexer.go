@@ -17,3 +17,7 @@ func NewConnMultiplexer(baseConn *net.Conn) (c *ConnMultiplexer) {
 		conn: *baseConn,
 	}
 }
+
+func (c *ConnMultiplexer) Process() {
+	
+}

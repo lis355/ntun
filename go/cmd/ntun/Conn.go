@@ -10,5 +10,5 @@ type Conn interface {
 type ConnIn interface {
 	Conn
 
-	HandleInputConn(conn net.Conn) error
+	HandleInputConn(address string) (net.Conn, error)
 }

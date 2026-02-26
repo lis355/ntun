@@ -2,6 +2,7 @@ package ntun
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 )
@@ -41,4 +42,6 @@ func (n *Node) AddAllowedToConnectNodeId(id uuid.UUID) {
 	}
 
 	n.allowedToConnectNodeIds[id] = struct{}{}
+
+	slog.Debug(fmt.Sprintf("%s allowed to connect node with id %s", n.String(), id.String()))
 }
