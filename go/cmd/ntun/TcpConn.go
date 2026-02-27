@@ -21,6 +21,7 @@ type TcpServerConn struct {
 	listener net.Listener
 	conn     net.Conn // только 1 активное соединиение, других отклоняем
 	connMu   sync.Mutex
+	connChan chan net.Conn
 
 	running bool
 }
@@ -29,6 +30,10 @@ func NewTcpServerConn(port int) (c *TcpServerConn) {
 	return &TcpServerConn{
 		port: port,
 	}
+}
+
+func (c *TcpServerConn) Transport() <-chan net.Conn {
+	return c.connChan
 }
 
 func (c *TcpServerConn) Start() error {
@@ -142,8 +147,9 @@ type TcpClientConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	conn   net.Conn
-	connMu sync.Mutex
+	conn     net.Conn
+	connMu   sync.Mutex
+	connChan chan net.Conn
 
 	running bool
 
@@ -158,6 +164,10 @@ func NewTcpClientConn(address string) (c *TcpClientConn) {
 			KeepAlive: 1 * time.Hour,
 		},
 	}
+}
+
+func (c *TcpClientConn) Transport() <-chan net.Conn {
+	return c.connChan
 }
 
 func (c *TcpClientConn) Start() error {
@@ -253,10 +263,6 @@ func (c *TcpClientConn) processConnection() {
 	bytes := make([]byte, defaultDataBufferSize)
 
 	for {
-		// DEBUG
-		c.conn.Write([]byte(time.Now().Format(time.RFC3339)))
-		time.Sleep(time.Second)
-
 		n, err := c.conn.Read(bytes)
 		select {
 		case <-c.ctx.Done():
@@ -277,8 +283,14 @@ func (c *TcpClientConn) processConnection() {
 	}
 }
 
-func (c *TcpClientConn) HandleInputConn(address string) (net.Conn, error) {
-	// TODO check conn transport is connected
+func (c *TcpClientConn) Dial(ctx context.Context, address string) (net.Conn, error) {
+	c.connMu.Lock()
+	conn := c.conn
+	c.connMu.Unlock()
+
+	if conn == nil {
+		return nil, fmt.Errorf("[TcpClientConn] not connected")
+	}
 
 	clientSide, muxSide := net.Pipe()
 	_ = muxSide
@@ -286,16 +298,27 @@ func (c *TcpClientConn) HandleInputConn(address string) (net.Conn, error) {
 	// streamID := m.nextID()
 	// go m.handleVirtualStream(streamID, address, muxSide)
 
-	// go func() {
-	// 	for {
-	// 		n, err := muxSide.Read(c.bytes)
-	// 		if err != nil {
-	// 			return
-	// 		}
+	wbuf := make([]byte, 1024)
+	copy(wbuf, []byte(address)) // Копирует байты из s в начало buf
+	c.conn.Write(wbuf)
 
-	// 		slog.Debug(fmt.Sprintf("muxSide read %d", n))
-	// 	}
-	// }()
+	go func() {
+		bytes := make([]byte, defaultDataBufferSize)
+
+		for {
+			n, err := muxSide.Read(bytes)
+			if err != nil {
+				return
+			}
+
+			// вначале соединения всегда читается 0, мб это прикол либы github.com/armon/go-socks5 ?
+			if n == 0 {
+				continue
+			}
+
+			slog.Debug(fmt.Sprintf("muxSide read %d", n))
+		}
+	}()
 
 	return clientSide, nil
 }

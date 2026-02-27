@@ -24,15 +24,15 @@ func main() {
 
 	const nodeTcpServerConnPort = 8080
 
-	clientNode := ntun.NewNode(uuid.New(), "client")
+	clientConn := ntun.NewTcpClientConn(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
+	clientNode := ntun.NewNode(uuid.New(), "client", clientConn)
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
-	clientNode.Conn = ntun.NewTcpClientConn(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
-	clientNode.Conn.Start()
+	clientNode.Start()
 
-	serverNode := ntun.NewNode(uuid.New(), "server")
+	serverConn := ntun.NewTcpServerConn(nodeTcpServerConnPort)
+	serverNode := ntun.NewNode(uuid.New(), "server", serverConn)
 	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
-	serverNode.Conn = ntun.NewTcpServerConn(nodeTcpServerConnPort)
-	serverNode.Conn.Start()
+	serverNode.Start()
 
 	clientNode.AddAllowedToConnectNodeId(serverNode.Id)
 	serverNode.AddAllowedToConnectNodeId(clientNode.Id)
@@ -45,9 +45,8 @@ func main() {
 
 	const proxyServerPort = 8082
 
-	socks5ServerReady := make(chan struct{})
-	ntun.CreateAndListenSocks5Server(proxyServerPort, clientNode.Conn.(ntun.ConnIn), socks5ServerReady)
-	<-socks5ServerReady
+	inputSock5Server := ntun.NewInputSock5Server(proxyServerPort, clientNode.ConnManager)
+	inputSock5Server.Start()
 
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 

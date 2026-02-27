@@ -10,16 +10,16 @@ import (
 
 const needPrintHexDump = false
 
-type observableConn struct {
+type snifferConn struct {
 	net.Conn
 	m sync.Mutex // for sync printing tcp hex data, slow for many connections but only for development
 }
 
-func newObservableConn(conn net.Conn) *observableConn {
-	return &observableConn{Conn: conn}
+func newObservableConn(conn net.Conn) *snifferConn {
+	return &snifferConn{Conn: conn}
 }
 
-func (c *observableConn) Read(b []byte) (n int, err error) {
+func (c *snifferConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 
 	if n > 0 {
@@ -34,7 +34,7 @@ func (c *observableConn) Read(b []byte) (n int, err error) {
 	return n, err
 }
 
-func (c *observableConn) Write(b []byte) (n int, err error) {
+func (c *snifferConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
 
 	if n > 0 {
