@@ -15,10 +15,6 @@ type Node struct {
 	*ConnManager
 }
 
-func GenerateNodeId() (id string) {
-	return uuid.New().String()
-}
-
 func NewNode(id uuid.UUID, name string, transporter Transporter) (n *Node) {
 	return &Node{
 		Id:                      id,

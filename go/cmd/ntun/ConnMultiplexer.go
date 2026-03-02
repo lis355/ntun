@@ -11,6 +11,8 @@ const (
 	MsgData
 )
 
+type ConnId string
+
 type ConnMultiplexer struct {
 	conn net.Conn
 }
@@ -21,7 +23,7 @@ func NewConnMultiplexer(conn net.Conn) (c *ConnMultiplexer) {
 	}
 }
 
-func (c *ConnMultiplexer) SendMsgConnect(connId uint32, address string) {
+func (c *ConnMultiplexer) SendMsgConnect(connId ConnId, address string) {
 	addressBuf := []byte(address)
 	msgBuf := make([]byte, 1+4+4+len(addressBuf))
 
@@ -33,21 +35,21 @@ func (c *ConnMultiplexer) SendMsgConnect(connId uint32, address string) {
 	c.conn.Write(msgBuf)
 }
 
-func (c *ConnMultiplexer) SendMsgDisconnect(connId uint32) {
-	msgBuf := make([]byte, 1+4)
+func (c *ConnMultiplexer) SendMsgDisconnect(connId ConnId) {
+	// msgBuf := make([]byte, 1+4)
 
-	msgBuf[0] = MsgDisconnect
-	binary.BigEndian.PutUint32(msgBuf[1:5], connId)
+	// msgBuf[0] = MsgDisconnect
+	// binary.BigEndian.PutUint32(msgBuf[1:5], connId)
 
-	c.conn.Write(msgBuf)
+	// c.conn.Write(msgBuf)
 }
 
-func (c *ConnMultiplexer) SendMsgData(connId uint32, data []byte) {
-	msgBuf := make([]byte, 1+4+len(data))
+func (c *ConnMultiplexer) SendMsgData(connId ConnId, data []byte) {
+	// msgBuf := make([]byte, 1+4+len(data))
 
-	msgBuf[0] = MsgData
-	binary.BigEndian.PutUint32(msgBuf[1:5], connId)
-	copy(msgBuf[5:], data)
+	// msgBuf[0] = MsgData
+	// binary.BigEndian.PutUint32(msgBuf[1:5], connId)
+	// copy(msgBuf[5:], data)
 
-	c.conn.Write(msgBuf)
+	// c.conn.Write(msgBuf)
 }

@@ -2,11 +2,10 @@ package ntun
 
 import (
 	"context"
-	"fmt"
 	"net"
-)
 
-type ConnId string
+	"github.com/google/uuid"
+)
 
 type ConnManager struct {
 	transporter Transporter
@@ -39,21 +38,17 @@ func (m *ConnManager) process() {
 }
 
 func (m *ConnManager) Dial(ctx context.Context, address string) (net.Conn, error) {
-	// id := GetId(conn)
+	id := ConnId(uuid.New().String())
 
-	// if _, ok := m.conn[id]; ok {
-	// 	panic("[ConnManager] id already exists")
-	// }
+	conn, connMux := net.Pipe()
 
-	// m.conn[id] = conn
+	m.conn[id] = connMux
+
+	m.connMultiplexer.SendMsgConnect(id, address)
 
 	// go m.processConnection(id)
 
-	return nil, nil
-}
-
-func GetId(conn net.Conn) ConnId {
-	return ConnId(fmt.Sprintf("%s -- %s", conn.LocalAddr(), conn.RemoteAddr()))
+	return conn, nil
 }
 
 func (m *ConnManager) processConnection(id ConnId) {

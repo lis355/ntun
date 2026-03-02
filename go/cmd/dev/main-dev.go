@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"ntun/cmd/app"
 	"ntun/cmd/ntun"
 	"ntun/utils/log"
@@ -24,29 +26,36 @@ func main() {
 
 	const nodeTcpServerConnPort = 8080
 
-	clientConn := ntun.NewTcpClientConn(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
-	clientNode := ntun.NewNode(uuid.New(), "client", clientConn)
+	clientTransport := ntun.NewTcpClientTransport(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
+	clientNode := ntun.NewNode(uuid.New(), "client", clientTransport)
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
 	clientNode.Start()
 
-	serverConn := ntun.NewTcpServerConn(nodeTcpServerConnPort)
-	serverNode := ntun.NewNode(uuid.New(), "server", serverConn)
+	serverTransport := ntun.NewTcpServerTransport(nodeTcpServerConnPort)
+	serverNode := ntun.NewNode(uuid.New(), "server", serverTransport)
 	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
 	serverNode.Start()
 
 	clientNode.AddAllowedToConnectNodeId(serverNode.Id)
 	serverNode.AddAllowedToConnectNodeId(clientNode.Id)
 
+	const proxyServerPort = 8082
+
+	inputSock5Server := ntun.NewInputSock5Server(proxyServerPort, func(ctx context.Context, scrConn net.Conn, address string) (net.Conn, error) {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("Ctx is done")
+		default:
+			return net.Dial("tcp", address)
+		}
+	})
+	inputSock5Server.Start()
+
 	const simpleHttpTimeServerPort = 8081
 	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpTimeServerPort)
 	simpleHttpTimeServerReady := make(chan struct{})
 	go createAndListenSimpleHttpTimeServer(simpleHttpTimeServerPort, simpleHttpTimeServerReady)
 	<-simpleHttpTimeServerReady
-
-	const proxyServerPort = 8082
-
-	inputSock5Server := ntun.NewInputSock5Server(proxyServerPort, clientNode.ConnManager)
-	inputSock5Server.Start()
 
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
@@ -57,9 +66,12 @@ func main() {
 	}
 
 	requestViaSocks5Proxy(simpleHttpTimeServerRequestUrl)
-	// // requestViaSocks5Proxy(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
-	// // requestViaSocks5Proxy(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+	requestViaSocks5Proxy(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
+	requestViaSocks5Proxy(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
 
-	// DEBUG
+	// time.Sleep(time.Second * 3)
+
+	// inputSock5Server.Stop()
+
 	select {}
 }

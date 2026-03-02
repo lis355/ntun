@@ -12,7 +12,7 @@ import (
 
 const defaultDataBufferSize = 4 * Kilobyte
 
-type TcpServerConn struct {
+type TcpServerTransport struct {
 	port int
 
 	ctx    context.Context
@@ -26,17 +26,17 @@ type TcpServerConn struct {
 	running bool
 }
 
-func NewTcpServerConn(port int) (c *TcpServerConn) {
-	return &TcpServerConn{
+func NewTcpServerTransport(port int) (c *TcpServerTransport) {
+	return &TcpServerTransport{
 		port: port,
 	}
 }
 
-func (c *TcpServerConn) Transport() <-chan net.Conn {
+func (c *TcpServerTransport) Transport() <-chan net.Conn {
 	return c.connChan
 }
 
-func (c *TcpServerConn) Start() error {
+func (c *TcpServerTransport) Start() error {
 	slog.Debug("[TcpServerConn] starting")
 	defer slog.Debug("[TcpServerConn] started")
 
@@ -66,7 +66,7 @@ func (c *TcpServerConn) Start() error {
 	return err
 }
 
-func (c *TcpServerConn) Stop() error {
+func (c *TcpServerTransport) Stop() error {
 	slog.Debug("[TcpServerConn] stopping")
 	defer slog.Debug("[TcpServerConn] stopped")
 
@@ -92,7 +92,7 @@ func (c *TcpServerConn) Stop() error {
 	return err
 }
 
-func (c *TcpServerConn) listen() {
+func (c *TcpServerTransport) listen() {
 	for {
 		conn, err := c.listener.Accept()
 		if err != nil {
@@ -131,7 +131,7 @@ func (c *TcpServerConn) listen() {
 	}
 }
 
-func (c *TcpServerConn) processConnection() {
+func (c *TcpServerTransport) processConnection() {
 	defer c.conn.Close()
 
 	// DEBUG
@@ -141,7 +141,7 @@ func (c *TcpServerConn) processConnection() {
 const TcpClientDialTimeout = 10 * time.Second
 const TcpClientReconnectTimeout = 1 * time.Second
 
-type TcpClientConn struct {
+type TcpClientTransport struct {
 	address string
 
 	ctx    context.Context
@@ -156,8 +156,8 @@ type TcpClientConn struct {
 	dialer net.Dialer
 }
 
-func NewTcpClientConn(address string) (c *TcpClientConn) {
-	return &TcpClientConn{
+func NewTcpClientTransport(address string) (c *TcpClientTransport) {
+	return &TcpClientTransport{
 		address: address,
 		dialer: net.Dialer{
 			Timeout:   30 * time.Second,
@@ -166,11 +166,11 @@ func NewTcpClientConn(address string) (c *TcpClientConn) {
 	}
 }
 
-func (c *TcpClientConn) Transport() <-chan net.Conn {
+func (c *TcpClientTransport) Transport() <-chan net.Conn {
 	return c.connChan
 }
 
-func (c *TcpClientConn) Start() error {
+func (c *TcpClientTransport) Start() error {
 	slog.Debug("[TcpClientConn] starting")
 	defer slog.Debug("[TcpClientConn] started")
 
@@ -192,7 +192,7 @@ func (c *TcpClientConn) Start() error {
 	return err
 }
 
-func (c *TcpClientConn) Stop() error {
+func (c *TcpClientTransport) Stop() error {
 	slog.Debug("[TcpClientConn] stopping")
 	defer slog.Debug("[TcpClientConn] stopped")
 
@@ -213,7 +213,7 @@ func (c *TcpClientConn) Stop() error {
 	return err
 }
 
-func (c *TcpClientConn) reconnect() {
+func (c *TcpClientTransport) reconnect() {
 	for {
 		slog.Debug(fmt.Sprintf("[TcpClientConn] trying to connect to %s", c.address))
 
@@ -248,14 +248,14 @@ func (c *TcpClientConn) reconnect() {
 	}
 }
 
-func (c *TcpClientConn) dial() (net.Conn, error) {
+func (c *TcpClientTransport) dial() (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, TcpClientDialTimeout)
 	defer cancel()
 
 	return c.dialer.DialContext(ctx, "tcp", c.address)
 }
 
-func (c *TcpClientConn) processConnection() {
+func (c *TcpClientTransport) processConnection() {
 	slog.Debug(fmt.Sprintf("[TcpClientConn] connected successfull to %s", c.address))
 
 	defer c.conn.Close()
@@ -283,7 +283,7 @@ func (c *TcpClientConn) processConnection() {
 	}
 }
 
-func (c *TcpClientConn) Dial(ctx context.Context, address string) (net.Conn, error) {
+func (c *TcpClientTransport) Dial(ctx context.Context, address string) (net.Conn, error) {
 	c.connMu.Lock()
 	conn := c.conn
 	c.connMu.Unlock()

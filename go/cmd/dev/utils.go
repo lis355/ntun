@@ -20,7 +20,8 @@ func request(proxyAddress, url string) string {
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
-			Dial: dialer.Dial,
+			Dial:              dialer.Dial,
+			DisableKeepAlives: true,
 		},
 	}
 
