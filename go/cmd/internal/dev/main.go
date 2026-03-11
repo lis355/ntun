@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"ntun/internal/app"
 	"ntun/internal/dev"
 	"ntun/internal/log"
+	"ntun/internal/utils"
 	"ntun/ntun"
 	"ntun/ntun/transport"
 	"os"
@@ -37,14 +39,17 @@ func main() {
 	clientNode.AddAllowedToConnectNodeId(serverNode.Id)
 	serverNode.AddAllowedToConnectNodeId(clientNode.Id)
 
+	const simpleHttpEchoServerPort = 8081
+	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
+	dev.ListenAndServeSimpleHttpEchoServer(simpleHttpEchoServerPort)
+
 	const proxyServerPort = 8082
 
-	inputSock5Server := transport.NewInputSock5Server(proxyServerPort, clientNode.ConnManager.Dial)
-	inputSock5Server.Start()
-
-	const simpleHttpTimeServerPort = 8081
-	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpTimeServerPort)
-	dev.CreateAndListenSimpleHttpTimeServer(simpleHttpTimeServerPort)
+	sock5Server := transport.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
+	sock5ServerListener, err := sock5Server.ListenAndServe(proxyServerPort)
+	if err != nil {
+		panic(err)
+	}
 
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
@@ -53,9 +58,35 @@ func main() {
 		panic(err)
 	}
 
-	requester.Get(simpleHttpTimeServerRequestUrl)
-	// requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
-	// requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+	testStr := hex.EncodeToString(utils.RandBytes(8))
+	result, err := requester.Post(simpleHttpTimeServerRequestUrl, testStr)
+	if err != nil {
+		panic(err)
+	}
 
-	// inputSock5Server.Stop()
+	if result != testStr {
+		slog.Error(fmt.Sprintf("result != testStr %s %s", result, testStr))
+
+		return
+	}
+
+	// ip, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// slog.Info(fmt.Sprintf("Public IP %s", ip))
+
+	// ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// if ip != ipHttps {
+	// 	slog.Error(fmt.Sprintf("ip != ipHttps %s %s", ip, ipHttps))
+
+	// 	return
+	// }
+
+	sock5ServerListener.Close()
 }

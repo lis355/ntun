@@ -1,7 +1,6 @@
 package ntun
 
 import (
-	"context"
 	"net"
 )
 
@@ -33,7 +32,7 @@ func (m *ConnManager) process() {
 	}
 }
 
-func (m *ConnManager) Dial(ctx context.Context, srcAddress, dstAddress string) (net.Conn, error) {
+func (m *ConnManager) Dial(srcAddress, dstAddress string) (net.Conn, error) {
 	return net.Dial("tcp", dstAddress)
 
 	// select {

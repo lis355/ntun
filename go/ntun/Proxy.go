@@ -1,46 +1,47 @@
 package ntun
 
 import (
-	"fmt"
+	"errors"
 	"io"
-	"log/slog"
 	"net"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
 )
 
-func Proxy(srcConn, destConn net.Conn) error {
-	slog.Debug(fmt.Sprintf("Proxying %s<-->%s", srcConn.RemoteAddr(), destConn.RemoteAddr()))
+func Proxy(srcConn, dstConn net.Conn) error {
+	// slog.Debug(fmt.Sprintf("Proxying %s<-->%s", srcConn.RemoteAddr(), dstConn.RemoteAddr()))
 
 	closeConns := sync.OnceFunc(func() {
 		srcConn.Close()
-		destConn.Close()
+		dstConn.Close()
 	})
+
+	proxyConns := func(a, b net.Conn) error {
+		_, err := io.Copy(a, b)
+		if errors.Is(err, io.EOF) ||
+			errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
+
+		closeConns()
+
+		return err
+	}
 
 	var g errgroup.Group
 
 	g.Go(func() error {
-		_, err := io.Copy(srcConn, destConn)
-		if err != nil {
-			closeConns()
-		}
-		return err
+		return proxyConns(srcConn, dstConn)
 	})
 
 	g.Go(func() error {
-		_, err := io.Copy(destConn, srcConn)
-		if err != nil {
-			closeConns()
-		}
-		return err
+		return proxyConns(dstConn, srcConn)
 	})
 
 	err := g.Wait()
 
-	closeConns()
-
-	slog.Debug(fmt.Sprintf("Done proxying %s<-->%s", srcConn.RemoteAddr(), destConn.RemoteAddr()))
+	// slog.Debug(fmt.Sprintf("Done proxying %s<-->%s", srcConn.RemoteAddr(), dstConn.RemoteAddr()))
 
 	return err
 }

@@ -2,15 +2,14 @@ package transport
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"ntun/ntun"
 	"strconv"
-	"sync"
 )
 
 const (
@@ -19,143 +18,87 @@ const (
 	methodNoAcceptable byte = 0xFF // 0xFF = No Acceptable Methods
 )
 
-type DialFunc func(ctx context.Context, srcAdress, dstAddress string) (net.Conn, error)
+type DialFunc func(srcAdress, dstAddress string) (net.Conn, error)
 
-type InputSock5Server struct {
-	port uint16
+type Sock5NoAuthServer struct {
 	dial DialFunc
-
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	listener net.Listener
-	mu       sync.Mutex
-
-	running bool
 }
 
-func NewInputSock5Server(port uint16, dial DialFunc) (c *InputSock5Server) {
-	return &InputSock5Server{
-		port: port,
+func NewSock5NoAuthServer(dial DialFunc) (c *Sock5NoAuthServer) {
+	return &Sock5NoAuthServer{
 		dial: dial,
 	}
 }
 
-func (c *InputSock5Server) Start() error {
-	slog.Debug("[InputSock5Server] starting")
-	defer slog.Debug("[InputSock5Server] started")
-
-	c.mu.Lock()
-	err := func() error {
-		if c.running {
-			return fmt.Errorf("[InputSock5Server] already started")
-		}
-
-		c.ctx, c.cancel = context.WithCancel(context.Background())
-
-		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", c.port))
-		if err != nil {
-			return err
-		}
-
-		c.listener = listener
-
-		slog.Info(fmt.Sprintf("[Socks5Server]: listening on http://localhost:%d", c.port))
-
-		go c.serve()
-
-		c.running = true
-
-		return nil
-	}()
-	c.mu.Unlock()
-
-	return err
-}
-
-func (c *InputSock5Server) Stop() error {
-	slog.Debug("[InputSock5Server] stopping")
-	defer slog.Debug("[InputSock5Server] stopped")
-
-	c.mu.Lock()
-	err := func() error {
-		if !c.running {
-			return fmt.Errorf("[InputSock5Server] already stopped")
-		}
-
-		c.cancel()
-
-		c.listener.Close()
-
-		c.running = false
-
-		return nil
-	}()
-	c.mu.Unlock()
-
-	return err
-}
-
-func (c *InputSock5Server) serve() {
-	for {
-		conn, err := c.listener.Accept()
-		select {
-		case <-c.ctx.Done():
-			return
-		default:
-			if err != nil {
-				slog.Error(fmt.Sprintf("[InputSock5Server] accept error: %v", err))
-				return
-			}
-
-			go c.handleConn(conn)
-		}
+func (s *Sock5NoAuthServer) ListenAndServe(port uint16) (net.Listener, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (c *InputSock5Server) handleConn(srcConn net.Conn) {
-	ctx, cancel := context.WithCancel(c.ctx)
-	defer cancel()
+	slog.Info(fmt.Sprintf("[Sock5NoAuthServer]: listening on http://localhost:%d", port))
 
 	go func() {
-		<-ctx.Done()
-		srcConn.Close()
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					slog.Debug("[Sock5NoAuthServer] closed")
+
+					return
+				}
+
+				slog.Error(fmt.Sprintf("[Sock5NoAuthServer] accept error: %v", err))
+
+				continue
+			}
+
+			go s.handleConn(conn)
+		}
 	}()
 
-	defer srcConn.Close()
+	return listener, nil
+}
 
-	address, err := c.handshakeNoAuth(srcConn)
+func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) error {
+	address, err := s.handshakeNoAuth(srcConn)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[InputSock5Server] handshake error: %v", err))
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
 
-		return
+		return err
 	}
 
-	slog.Debug(fmt.Sprintf("[InputSock5Server] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
+	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
 
 	// Connect to target
-	destConn, err := c.dial(c.ctx, srcConn.RemoteAddr().String(), address)
+	dstConn, err := s.dial(srcConn.RemoteAddr().String(), address)
 	if err != nil {
 		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
 		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
-		return
-	}
 
-	defer destConn.Close()
+		return err
+	}
 
 	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
 	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
-		return
+		return err
 	}
 
-	slog.Debug(fmt.Sprintf("[InputSock5Server] connected to %s (%s)", address, destConn.RemoteAddr()))
+	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 
-	// srcConn = NewSniffConn(fmt.Sprintf("input socks5 %s-%s", srcConn.RemoteAddr(), address), srcConn)
+	err = ntun.Proxy(srcConn, dstConn)
+	if err != nil {
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] proxy connection error: %v", err))
 
-	ntun.Proxy(srcConn, destConn)
+		return err
+	}
+
+	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+
+	return nil
 }
 
-func (c *InputSock5Server) handshakeNoAuth(srcConn net.Conn) (string, error) {
+func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 	buf := make([]byte, 255) // Max 255 methods
 
 	// Handshake (RFC 1928, Sec 3)
