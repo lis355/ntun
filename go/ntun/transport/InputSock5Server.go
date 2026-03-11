@@ -1,4 +1,4 @@
-package ntun
+package transport
 
 import (
 	"bytes"
@@ -8,17 +8,18 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"ntun/ntun"
 	"strconv"
 	"sync"
 )
 
 const (
-	Version            byte = 5
-	MethodAuthNone     byte = 0    // 0 = No Authentication Required
-	MethodNoAcceptable byte = 0xFF // 0xFF = No Acceptable Methods
+	version            byte = 5
+	methodAuthNone     byte = 0    // 0 = No Authentication Required
+	methodNoAcceptable byte = 0xFF // 0xFF = No Acceptable Methods
 )
 
-type DialFunc func(ctx context.Context, scrConn net.Conn, address string) (net.Conn, error)
+type DialFunc func(ctx context.Context, srcAdress, dstAddress string) (net.Conn, error)
 
 type InputSock5Server struct {
 	port uint16
@@ -133,23 +134,25 @@ func (c *InputSock5Server) handleConn(srcConn net.Conn) {
 	slog.Debug(fmt.Sprintf("[InputSock5Server] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
 
 	// Connect to target
-	destConn, err := c.dial(c.ctx, srcConn, address)
+	destConn, err := c.dial(c.ctx, srcConn.RemoteAddr().String(), address)
 	if err != nil {
 		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
-		srcConn.Write([]byte{Version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
+		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
 
 	defer destConn.Close()
 
-	slog.Debug(fmt.Sprintf("[InputSock5Server] connected to %s (%s)", address, destConn.RemoteAddr()))
-
 	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
-	if _, err := srcConn.Write([]byte{Version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
 		return
 	}
 
-	c.proxy(srcConn, destConn)
+	slog.Debug(fmt.Sprintf("[InputSock5Server] connected to %s (%s)", address, destConn.RemoteAddr()))
+
+	// srcConn = NewSniffConn(fmt.Sprintf("input socks5 %s-%s", srcConn.RemoteAddr(), address), srcConn)
+
+	ntun.Proxy(srcConn, destConn)
 }
 
 func (c *InputSock5Server) handshakeNoAuth(srcConn net.Conn) (string, error) {
@@ -162,8 +165,8 @@ func (c *InputSock5Server) handshakeNoAuth(srcConn net.Conn) (string, error) {
 		return "", err
 	}
 
-	version := buf[0]
-	if version != Version {
+	vrs := buf[0]
+	if vrs != version {
 		return "", fmt.Errorf("Unsupported version %d", version)
 	}
 
@@ -173,15 +176,15 @@ func (c *InputSock5Server) handshakeNoAuth(srcConn net.Conn) (string, error) {
 		return "", err
 	}
 
-	if bytes.IndexByte(methodsBuf, MethodAuthNone) == -1 {
-		if _, err := srcConn.Write([]byte{version, MethodNoAcceptable}); err != nil {
+	if bytes.IndexByte(methodsBuf, methodAuthNone) == -1 {
+		if _, err := srcConn.Write([]byte{version, methodNoAcceptable}); err != nil {
 			return "", err
 		}
 
 		return "", fmt.Errorf("No acceptable method")
 	}
 
-	if _, err := srcConn.Write([]byte{version, MethodAuthNone}); err != nil {
+	if _, err := srcConn.Write([]byte{version, methodAuthNone}); err != nil {
 		return "", err
 	}
 
@@ -239,27 +242,4 @@ func (c *InputSock5Server) handshakeNoAuth(srcConn net.Conn) (string, error) {
 	port := strconv.FormatUint(uint64(binary.BigEndian.Uint16(buf[:2])), 10)
 
 	return net.JoinHostPort(host, port), nil
-}
-
-func (c *InputSock5Server) proxy(srcConn, destConn net.Conn) {
-	slog.Debug(fmt.Sprintf("[InputSock5Server] proxying %s<-->%s", srcConn.RemoteAddr(), destConn.RemoteAddr()))
-
-	done := make(chan struct{})
-
-	go func() {
-		io.Copy(srcConn, destConn)
-		done <- struct{}{}
-	}()
-
-	go func() {
-		io.Copy(destConn, srcConn)
-		done <- struct{}{}
-	}()
-
-	<-done
-
-	srcConn.Close()
-	destConn.Close()
-
-	slog.Debug(fmt.Sprintf("[InputSock5Server] done proxying %s<-->%s", srcConn.RemoteAddr(), destConn.RemoteAddr()))
 }

@@ -1,4 +1,4 @@
-package main
+package dev
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func createAndListenSimpleHttpTimeServer(port int, ready chan struct{}) {
+func CreateAndListenSimpleHttpTimeServer(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -20,16 +20,13 @@ func createAndListenSimpleHttpTimeServer(port int, ready chan struct{}) {
 		Handler: mux,
 	}
 
-	go func() {
-		listener, err := net.Listen("tcp", server.Addr)
-		if err != nil {
-			panic(err)
-		}
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		slog.Error(fmt.Sprintf("[SimpleHttpTimeServer]: error %s", err))
+		return
+	}
 
-		slog.Info(fmt.Sprintf("[SimpleHttpTimeServer]: listening on http://localhost:%d", port))
+	slog.Info(fmt.Sprintf("[SimpleHttpTimeServer]: listening on http://localhost:%d", port))
 
-		close(ready)
-
-		server.Serve(listener)
-	}()
+	go server.Serve(listener)
 }

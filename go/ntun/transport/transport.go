@@ -1,4 +1,4 @@
-package ntun
+package transport
 
 import (
 	"context"
@@ -6,11 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"ntun/ntun"
 	"sync"
 	"time"
 )
 
-const defaultDataBufferSize = 4 * Kilobyte
+const defaultDataBufferSize = 4 * ntun.Kilobyte
 
 type TcpServerTransport struct {
 	port int
@@ -260,27 +261,7 @@ func (c *TcpClientTransport) processConnection() {
 
 	defer c.conn.Close()
 
-	bytes := make([]byte, defaultDataBufferSize)
-
-	for {
-		n, err := c.conn.Read(bytes)
-		select {
-		case <-c.ctx.Done():
-			return
-		default:
-			if err != nil {
-				if err != io.EOF {
-					slog.Error(err.Error())
-				}
-
-				return
-			}
-
-			buffer := bytes[:n]
-
-			slog.Debug(fmt.Sprintf("[TcpClientConn] read %d bytes %s", len(buffer), buffer))
-		}
-	}
+	c.connChan <- c.conn
 }
 
 func (c *TcpClientTransport) Dial(ctx context.Context, address string) (net.Conn, error) {

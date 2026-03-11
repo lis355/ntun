@@ -48,7 +48,7 @@ func (logHandler *LogHandler) Handle(ctx context.Context, r slog.Record) error {
 	return nil
 }
 
-func Initialize() {
+func Init() {
 	var level slog.Level
 	envLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
 

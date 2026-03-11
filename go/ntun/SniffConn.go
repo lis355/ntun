@@ -1,4 +1,4 @@
-package main
+package ntun
 
 import (
 	"fmt"
@@ -10,20 +10,21 @@ import (
 
 const needPrintHexDump = false
 
-type snifferConn struct {
+type SniffConn struct {
 	net.Conn
-	m sync.Mutex // for sync printing tcp hex data, slow for many connections but only for development
+	name string
+	m    sync.Mutex // for sync printing tcp hex data, slow for many connections but only for development
 }
 
-func newObservableConn(conn net.Conn) *snifferConn {
-	return &snifferConn{Conn: conn}
+func NewSniffConn(name string, conn net.Conn) *SniffConn {
+	return &SniffConn{name: name, Conn: conn}
 }
 
-func (c *snifferConn) Read(b []byte) (n int, err error) {
+func (c *SniffConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 
 	if n > 0 {
-		slog.Debug(fmt.Sprintf("[%s <-- %s] read %d bytes", c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
+		slog.Debug(fmt.Sprintf("[%s] %s <-- %s read %d bytes", c.name, c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
 		if needPrintHexDump {
 			c.m.Lock()
 			printHexDump(b[:n])
@@ -34,11 +35,11 @@ func (c *snifferConn) Read(b []byte) (n int, err error) {
 	return n, err
 }
 
-func (c *snifferConn) Write(b []byte) (n int, err error) {
+func (c *SniffConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
 
 	if n > 0 {
-		slog.Debug(fmt.Sprintf("[%s --> %s] write %d bytes", c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
+		slog.Debug(fmt.Sprintf("[%s] %s <-- %s write %d bytes", c.name, c.Conn.LocalAddr(), c.Conn.RemoteAddr(), n))
 		if needPrintHexDump {
 			c.m.Lock()
 			printHexDump(b[:n])

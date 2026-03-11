@@ -9,10 +9,9 @@
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
-			"program": "${workspaceFolder}/cmd/cli/",
+			"program": "${workspaceFolder}/cmd/ntun/main.go",
 			"cwd": "${workspaceFolder}",
 			"env": {
-				"CGO_ENABLED": "1",
 				"LOG_LEVEL": "debug",
 				"DEVELOPMENT": "true"
 			}
@@ -22,13 +21,21 @@
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
-			"program": "${workspaceFolder}/cmd/dev/",
+			"program": "${workspaceFolder}/cmd/internal/dev/main.go",
 			"cwd": "${workspaceFolder}",
 			"env": {
-				"CGO_ENABLED": "1",
-				"LOG_LEVEL": "debug",
-				"DEVELOPMENT": "true"
+				"LOG_LEVEL": "debug"
 			}
-		}
+		},
+		{
+			"name": "ntun/test current package",
+			"type": "go",
+			"request": "launch",
+			"mode": "test",
+			"program": "${fileDirname}",
+			"args": [
+				"-test.v"
+			]
+		},
 	]
 }

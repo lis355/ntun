@@ -27,11 +27,6 @@ type Dialer interface {
 	Dial(ctx context.Context, address string) (net.Conn, error)
 }
 
-type ConnDial struct {
-	ctx     context.Context
-	address string
-}
-
 type Input interface {
 }
 
