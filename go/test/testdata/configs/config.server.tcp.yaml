@@ -1,0 +1,11 @@
+name: server
+id: 1ee18100-39f7-434c-9206-47bfe572169d
+allowed: 
+  - 6a971624-0b19-4c8d-8ceb-d5544675e898
+output: 
+  type: direct
+transport: 
+  type: tcp-server
+  host: localhost
+  port: 8303
+  rateLimit: 50mbps

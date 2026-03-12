@@ -1,4 +1,4 @@
-package transport
+package inputs
 
 import (
 	"bytes"
@@ -21,7 +21,8 @@ const (
 type DialFunc func(srcAdress, dstAddress string) (net.Conn, error)
 
 type Sock5NoAuthServer struct {
-	dial DialFunc
+	dial     DialFunc
+	listener net.Listener
 }
 
 func NewSock5NoAuthServer(dial DialFunc) (c *Sock5NoAuthServer) {
@@ -30,11 +31,13 @@ func NewSock5NoAuthServer(dial DialFunc) (c *Sock5NoAuthServer) {
 	}
 }
 
-func (s *Sock5NoAuthServer) ListenAndServe(port uint16) (net.Listener, error) {
+func (s *Sock5NoAuthServer) ListenAndServe(port uint16) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return nil, err
+		return err
 	}
+
+	s.listener = listener
 
 	slog.Info(fmt.Sprintf("[Sock5NoAuthServer]: listening on http://localhost:%d", port))
 
@@ -57,7 +60,20 @@ func (s *Sock5NoAuthServer) ListenAndServe(port uint16) (net.Listener, error) {
 		}
 	}()
 
-	return listener, nil
+	return nil
+}
+
+func (s *Sock5NoAuthServer) Close() error {
+	err := s.listener.Close()
+	if err != nil {
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer]: error %s", err))
+
+		return err
+	}
+
+	slog.Info("[Sock5NoAuthServer]: closed")
+
+	return nil
 }
 
 func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) error {

@@ -9,6 +9,7 @@ import (
 	"ntun/internal/log"
 	"ntun/internal/utils"
 	"ntun/ntun"
+	"ntun/ntun/connections/inputs"
 	"ntun/ntun/transport"
 	"os"
 	"runtime"
@@ -41,12 +42,13 @@ func main() {
 
 	const simpleHttpEchoServerPort = 8081
 	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
-	dev.ListenAndServeSimpleHttpEchoServer(simpleHttpEchoServerPort)
+	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
+	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
 
 	const proxyServerPort = 8082
 
-	sock5Server := transport.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
-	sock5ServerListener, err := sock5Server.ListenAndServe(proxyServerPort)
+	sock5Server := inputs.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
+	err := sock5Server.ListenAndServe(proxyServerPort)
 	if err != nil {
 		panic(err)
 	}
@@ -88,5 +90,5 @@ func main() {
 	// 	return
 	// }
 
-	sock5ServerListener.Close()
+	sock5Server.Close()
 }
