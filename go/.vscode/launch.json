@@ -10,6 +10,7 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${workspaceFolder}/cmd/ntun/main.go",
+			"console": "integratedTerminal",
 			"cwd": "${workspaceFolder}",
 			"env": {
 				"LOG_LEVEL": "debug",
@@ -26,6 +27,15 @@
 			"env": {
 				"LOG_LEVEL": "debug"
 			}
+		},
+		{
+			"name": "go current script",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "${file}",
+			"cwd": "${fileDirname}",
+			"console": "integratedTerminal"
 		},
 		{
 			"name": "ntun/test current package",
