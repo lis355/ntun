@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (
@@ -54,12 +52,12 @@ func (c *ConnMux) createConn(srcAddress, dstAddress string) (net.Conn, error) {
 
 	slog.Debug(fmt.Sprintf("[%T]: createConn id=%s", c, id))
 
-	msgBytes, err := msgpack.Marshal(&MsgConnect{MsgConn{Id: id}, dstAddress})
-	if err != nil {
-		return nil, err
-	}
+	// msgBytes, err := msgpack.Marshal(&MsgConnect{MsgConn{Id: id}, dstAddress})
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	c.WriteMsg(MsgTypeConnect, msgBytes)
+	// c.WriteMsg(MsgTypeConnect, msgBytes)
 
 	muxConn := &MuxConn{
 		Conn: &net.IPConn{}, // DEBUG Mock

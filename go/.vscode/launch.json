@@ -10,8 +10,8 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${workspaceFolder}/cmd/ntun/main.go",
-			"console": "integratedTerminal",
 			"cwd": "${workspaceFolder}",
+			"console": "integratedTerminal",
 			"env": {
 				"LOG_LEVEL": "debug",
 				"DEVELOPMENT": "true"
@@ -24,6 +24,7 @@
 			"mode": "auto",
 			"program": "${workspaceFolder}/cmd/internal/dev/main.go",
 			"cwd": "${workspaceFolder}",
+			"console": "integratedTerminal",
 			"env": {
 				"LOG_LEVEL": "debug"
 			}
@@ -34,8 +35,11 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${file}",
-			"cwd": "${fileDirname}",
-			"console": "integratedTerminal"
+			"cwd": "${workspaceFolder}",
+			"console": "integratedTerminal",
+			"env": {
+				"LOG_LEVEL": "info"
+			}
 		},
 		{
 			"name": "ntun/test current package",

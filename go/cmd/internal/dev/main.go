@@ -46,7 +46,6 @@ func main() {
 	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
 
 	const proxyServerPort = 8082
-
 	sock5Server := inputs.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
 	err := sock5Server.ListenAndServe(proxyServerPort)
 	if err != nil {
