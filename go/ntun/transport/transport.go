@@ -29,7 +29,8 @@ type TcpServerTransport struct {
 
 func NewTcpServerTransport(port int) (c *TcpServerTransport) {
 	return &TcpServerTransport{
-		port: port,
+		port:     port,
+		connChan: make(chan net.Conn),
 	}
 }
 
@@ -38,13 +39,13 @@ func (c *TcpServerTransport) Transport() <-chan net.Conn {
 }
 
 func (c *TcpServerTransport) Start() error {
-	slog.Debug("[TcpServerConn] starting")
-	defer slog.Debug("[TcpServerConn] started")
+	slog.Debug("[TcpServerTransport] starting")
+	defer slog.Debug("[TcpServerTransport] started")
 
 	c.connMu.Lock()
 	err := func() error {
 		if c.running {
-			return fmt.Errorf("[TcpServerConn] already started")
+			return fmt.Errorf("[TcpServerTransport] already started")
 		}
 
 		c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -68,13 +69,13 @@ func (c *TcpServerTransport) Start() error {
 }
 
 func (c *TcpServerTransport) Stop() error {
-	slog.Debug("[TcpServerConn] stopping")
-	defer slog.Debug("[TcpServerConn] stopped")
+	slog.Debug("[TcpServerTransport] stopping")
+	defer slog.Debug("[TcpServerTransport] stopped")
 
 	c.connMu.Lock()
 	err := func() error {
 		if !c.running {
-			return fmt.Errorf("[TcpServerConn] already stopped")
+			return fmt.Errorf("[TcpServerTransport] already stopped")
 		}
 
 		c.cancel()
@@ -126,6 +127,9 @@ func (c *TcpServerTransport) listen() {
 
 		c.processConnection()
 
+		// DEBUG
+		return
+
 		c.connMu.Lock()
 		c.conn = nil
 		c.connMu.Unlock()
@@ -133,10 +137,9 @@ func (c *TcpServerTransport) listen() {
 }
 
 func (c *TcpServerTransport) processConnection() {
-	defer c.conn.Close()
+	slog.Debug(fmt.Sprintf("[TcpServerTransport] connected successfull to %s", c.conn.RemoteAddr().String()))
 
-	// DEBUG
-	io.Copy(c.conn, c.conn)
+	c.connChan <- c.conn
 }
 
 const TcpClientDialTimeout = 10 * time.Second
@@ -159,7 +162,8 @@ type TcpClientTransport struct {
 
 func NewTcpClientTransport(address string) (c *TcpClientTransport) {
 	return &TcpClientTransport{
-		address: address,
+		address:  address,
+		connChan: make(chan net.Conn),
 		dialer: net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 1 * time.Hour,
@@ -172,13 +176,13 @@ func (c *TcpClientTransport) Transport() <-chan net.Conn {
 }
 
 func (c *TcpClientTransport) Start() error {
-	slog.Debug("[TcpClientConn] starting")
-	defer slog.Debug("[TcpClientConn] started")
+	slog.Debug("[TcpClientTransport] starting")
+	defer slog.Debug("[TcpClientTransport] started")
 
 	c.connMu.Lock()
 	err := func() error {
 		if c.running {
-			return fmt.Errorf("[TcpClientConn] already started")
+			return fmt.Errorf("[TcpClientTransport] already started")
 		}
 
 		c.ctx, c.cancel = context.WithCancel(context.Background())
@@ -194,13 +198,13 @@ func (c *TcpClientTransport) Start() error {
 }
 
 func (c *TcpClientTransport) Stop() error {
-	slog.Debug("[TcpClientConn] stopping")
-	defer slog.Debug("[TcpClientConn] stopped")
+	slog.Debug("[TcpClientTransport] stopping")
+	defer slog.Debug("[TcpClientTransport] stopped")
 
 	c.connMu.Lock()
 	err := func() error {
 		if !c.running {
-			return fmt.Errorf("[TcpClientConn] already stopped")
+			return fmt.Errorf("[TcpClientTransport] already stopped")
 		}
 
 		c.cancel()
@@ -216,11 +220,11 @@ func (c *TcpClientTransport) Stop() error {
 
 func (c *TcpClientTransport) reconnect() {
 	for {
-		slog.Debug(fmt.Sprintf("[TcpClientConn] trying to connect to %s", c.address))
+		slog.Debug(fmt.Sprintf("[TcpClientTransport] trying to connect to %s", c.address))
 
 		conn, err := c.dial()
 		if err != nil {
-			slog.Debug("[TcpClientConn] connect failed, waiting")
+			slog.Debug("[TcpClientTransport] connect failed, waiting")
 
 			select {
 			case <-c.ctx.Done():
@@ -235,6 +239,9 @@ func (c *TcpClientTransport) reconnect() {
 		c.connMu.Unlock()
 
 		c.processConnection()
+
+		// DEBUG
+		return
 
 		c.connMu.Lock()
 		c.conn = nil
@@ -257,9 +264,7 @@ func (c *TcpClientTransport) dial() (net.Conn, error) {
 }
 
 func (c *TcpClientTransport) processConnection() {
-	slog.Debug(fmt.Sprintf("[TcpClientConn] connected successfull to %s", c.address))
-
-	defer c.conn.Close()
+	slog.Debug(fmt.Sprintf("[TcpClientTransport] connected successfull to %s", c.address))
 
 	c.connChan <- c.conn
 }
@@ -270,7 +275,7 @@ func (c *TcpClientTransport) Dial(ctx context.Context, address string) (net.Conn
 	c.connMu.Unlock()
 
 	if conn == nil {
-		return nil, fmt.Errorf("[TcpClientConn] not connected")
+		return nil, fmt.Errorf("[TcpClientTransport] not connected")
 	}
 
 	clientSide, muxSide := net.Pipe()

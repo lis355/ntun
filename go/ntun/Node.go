@@ -1,48 +1,43 @@
 package ntun
 
 import (
-	"fmt"
 	"log/slog"
+	"ntun/internal/conf"
 
 	"github.com/google/uuid"
 )
 
 type Node struct {
-	Id                      uuid.UUID
-	Name                    string
-	allowedToConnectNodeIds map[uuid.UUID]struct{}
+	Config *conf.Config
 	Transporter
 	*ConnManager
 }
 
-func NewNode(id uuid.UUID, name string, transporter Transporter) (n *Node) {
-	return &Node{
-		Id:                      id,
-		Name:                    name,
-		allowedToConnectNodeIds: make(map[uuid.UUID]struct{}),
-		Transporter:             transporter,
-		ConnManager:             NewConnManager(transporter),
+func NewNode(config *conf.Config, transporter Transporter) *Node {
+	node := &Node{
+		Config:      config,
+		Transporter: transporter,
 	}
+
+	node.ConnManager = NewConnManager(node)
+
+	return node
 }
 
 func (n *Node) String() string {
-	return fmt.Sprintf("%s [%s]", n.Id.String(), n.Name)
+	//DEBUG
+	// return fmt.Sprintf("%s [%s]", n.Config.Id.String(), n.Config.Name)
+	return n.Config.Name
 }
 
 func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
-	_, ok := n.allowedToConnectNodeIds[id]
-
-	return ok
-}
-
-func (n *Node) AddAllowedToConnectNodeId(id uuid.UUID) {
-	if n.HasAllowedToConnectNodeId(id) {
-		panic(fmt.Errorf("Already has id %s", id.String()))
+	for _, allowedId := range n.Config.Allowed {
+		if allowedId == id {
+			return true
+		}
 	}
 
-	n.allowedToConnectNodeIds[id] = struct{}{}
-
-	slog.Debug(fmt.Sprintf("%s allowed to connect node with id %s", n.String(), id.String()))
+	return false
 }
 
 func (n *Node) Start() error {

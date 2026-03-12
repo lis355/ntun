@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"ntun/internal/dev"
 	"ntun/ntun"
 	"strconv"
 )
@@ -76,14 +77,40 @@ func (s *Sock5NoAuthServer) Close() error {
 	return nil
 }
 
-func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) error {
+func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	address, err := s.handshakeNoAuth(srcConn)
 	if err != nil {
 		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
 
-		return err
+		srcConn.Close()
+
+		return
 	}
 
+	dstConn, err := s.handleDial(srcConn, address)
+	if err != nil {
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
+
+		srcConn.Close()
+
+		return
+	}
+
+	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+
+	dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("dstConn"), true)
+
+	err = ntun.Proxy(srcConn, dstConn)
+	if err != nil {
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] proxy connection error: %v", err))
+
+		return
+	}
+
+	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+}
+
+func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Conn, error) {
 	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
 
 	// Connect to target
@@ -92,26 +119,18 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) error {
 		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
 		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
 
-		return err
+		return nil, err
 	}
 
 	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
 	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
-		return err
+
+		dstConn.Close()
+
+		return nil, err
 	}
 
-	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
-
-	err = ntun.Proxy(srcConn, dstConn)
-	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] proxy connection error: %v", err))
-
-		return err
-	}
-
-	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
-
-	return nil
+	return dstConn, nil
 }
 
 func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func PrintHexDump(data []byte) {
+func HexDump(data []byte) string {
 	// fmt.Printf("%s", strings.Repeat(" ", 10))
 	// for i := range 32 {
 	// 	fmt.Printf("%02X ", i)
@@ -31,35 +31,52 @@ func PrintHexDump(data []byte) {
 	// }
 	// fmt.Print("\n")
 
-	for i := 0; i < len(data); i += 32 {
-		fmt.Printf("%08X| ", i)
+	var out strings.Builder
 
-		ascii := strings.Builder{}
+	for i := 0; i < len(data); i += 32 {
+		fmt.Fprintf(&out, "%08X| ", i)
+
+		var ascii strings.Builder
 		ascii.WriteString("|")
 
 		for j := 0; j < 32; j++ {
 			if i+j < len(data) {
-				fmt.Printf("%02X ", data[i+j])
+				fmt.Fprintf(&out, "%02X ", data[i+j])
 
 				b := data[i+j]
-				if b >= 32 &&
-					b <= 126 {
-					ascii.WriteByte(b)
-				} else {
-					ascii.WriteByte('.')
-				}
+				ascii.WriteByte(ByteToASCIIHexDumpChar(b))
 			} else {
-				fmt.Print("   ")
+				fmt.Fprintf(&out, "   ")
 				ascii.WriteByte(' ')
 			}
 
 			if (j+1)%8 == 0 &&
 				j+1 != 32 {
-				fmt.Print(" ")
+				fmt.Fprintf(&out, " ")
 			}
 		}
 
-		fmt.Print(ascii.String())
-		fmt.Print("\n")
+		out.WriteString(ascii.String())
+		fmt.Fprintf(&out, "\n")
 	}
+
+	return out.String()
+}
+
+func ByteToASCIIHexDumpChar(b byte) byte {
+	if b >= 32 &&
+		b <= 126 {
+		return b
+	} else {
+		return '.'
+	}
+}
+
+func BytesToASCIIHexDumpString(data []byte) string {
+	var ascii strings.Builder
+	for _, b := range data {
+		ascii.WriteByte(ByteToASCIIHexDumpChar(b))
+	}
+
+	return ascii.String()
 }

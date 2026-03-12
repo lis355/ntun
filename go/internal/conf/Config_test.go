@@ -27,6 +27,7 @@ func TestConfig(t *testing.T) {
 		id: 6a971624-0b19-4c8d-8ceb-d5544675e898
 		allowed: 
 			- 1ee18100-39f7-434c-9206-47bfe572169d
+		pass: "123"
 		input: 
 			type: socks5
 			port: 8080
@@ -36,9 +37,10 @@ func TestConfig(t *testing.T) {
 			port: 8303
 			rateLimit: 50mbps
 		`, &Config{
-				Name:    "client",
-				Id:      ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
-				Allowed: []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
+				Name:      "client",
+				Id:        ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
+				Allowed:   []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
+				CipherKey: "123",
 				Input: &InputSocks5{
 					Port: 8080,
 				},
@@ -55,6 +57,7 @@ func TestConfig(t *testing.T) {
 		id: 6a971624-0b19-4c8d-8ceb-d5544675e898
 		allowed: 
 			- 1ee18100-39f7-434c-9206-47bfe572169d
+		pass: "123"
 		output: 
 			type: direct
 		transport: 
@@ -63,10 +66,11 @@ func TestConfig(t *testing.T) {
 			port: 8303
 			rateLimit: 50mbps
 		`, &Config{
-				Name:    "client",
-				Id:      ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
-				Allowed: []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
-				Output:  &OutputDirect{},
+				Name:      "client",
+				Id:        ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
+				Allowed:   []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
+				CipherKey: "123",
+				Output:    &OutputDirect{},
 				Transport: &TransportTcpServer{
 					Host: "localhost",
 					Port: 8303,

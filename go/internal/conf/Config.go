@@ -12,6 +12,7 @@ type Config struct {
 	Name      string      `yaml:"name"`
 	Id        uuid.UUID   `yaml:"id"`
 	Allowed   []uuid.UUID `yaml:"allowed"`
+	CipherKey string      `yaml:"pass"`
 	Input     any         `yaml:"-"`
 	Output    any         `yaml:"-"`
 	Transport any         `yaml:"-"`

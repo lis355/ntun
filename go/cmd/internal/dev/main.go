@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"ntun/internal/app"
+	"ntun/internal/conf"
 	"ntun/internal/dev"
 	"ntun/internal/log"
 	"ntun/internal/utils"
@@ -13,6 +14,7 @@ import (
 	"ntun/ntun/transport"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,25 +27,17 @@ func main() {
 	slog.Info(fmt.Sprintf("%s v%s (%s)", app.Name, app.Version, runtime.Version()))
 	slog.Info("DEVELOPMENT")
 
+	clientId, serverId := uuid.New(), uuid.New()
+	cipherKey := hex.EncodeToString(utils.RandBytes(8))
+
+	// Client
+
 	const nodeTcpServerConnPort = 8080
 
 	clientTransport := transport.NewTcpClientTransport(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
-	clientNode := ntun.NewNode(uuid.New(), "client", clientTransport)
+	clientNode := ntun.NewNode(&conf.Config{Id: clientId, Name: "client", Allowed: []uuid.UUID{serverId}, CipherKey: cipherKey}, clientTransport)
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
 	clientNode.Start()
-
-	serverTransport := transport.NewTcpServerTransport(nodeTcpServerConnPort)
-	serverNode := ntun.NewNode(uuid.New(), "server", serverTransport)
-	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
-	serverNode.Start()
-
-	clientNode.AddAllowedToConnectNodeId(serverNode.Id)
-	serverNode.AddAllowedToConnectNodeId(clientNode.Id)
-
-	const simpleHttpEchoServerPort = 8081
-	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
-	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
-	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
 
 	const proxyServerPort = 8082
 	sock5Server := inputs.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
@@ -52,6 +46,22 @@ func main() {
 		panic(err)
 	}
 
+	// Server
+
+	serverTransport := transport.NewTcpServerTransport(nodeTcpServerConnPort)
+	serverNode := ntun.NewNode(&conf.Config{Id: serverId, Name: "server", Allowed: []uuid.UUID{clientId}, CipherKey: cipherKey}, serverTransport)
+	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
+	serverNode.Start()
+
+	// Test
+
+	time.Sleep(time.Second)
+
+	const simpleHttpEchoServerPort = 8081
+	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
+	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
+	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
+
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
 	requester, err := dev.NewRequester(socks5ProxyAddress)
@@ -59,17 +69,17 @@ func main() {
 		panic(err)
 	}
 
-	testStr := hex.EncodeToString(utils.RandBytes(8))
-	result, err := requester.Post(simpleHttpTimeServerRequestUrl, testStr)
-	if err != nil {
-		panic(err)
-	}
+	// testStr := hex.EncodeToString(utils.RandBytes(8))
+	// result, err := requester.Post(simpleHttpTimeServerRequestUrl, testStr)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	if result != testStr {
-		slog.Error(fmt.Sprintf("result != testStr %s %s", result, testStr))
+	// if result != testStr {
+	// 	slog.Error(fmt.Sprintf("result != testStr %s %s", result, testStr))
 
-		return
-	}
+	// 	return
+	// }
 
 	// ip, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
 	// if err != nil {
@@ -78,16 +88,22 @@ func main() {
 
 	// slog.Info(fmt.Sprintf("Public IP %s", ip))
 
-	// ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
-	// if err != nil {
-	// 	panic(err)
-	// }
+	for range 15 {
+		ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+		if err != nil {
+			panic(err)
+		}
+
+		_ = ipHttps
+	}
 
 	// if ip != ipHttps {
 	// 	slog.Error(fmt.Sprintf("ip != ipHttps %s %s", ip, ipHttps))
 
 	// 	return
 	// }
+
+	_ = simpleHttpTimeServerRequestUrl
 
 	sock5Server.Close()
 }

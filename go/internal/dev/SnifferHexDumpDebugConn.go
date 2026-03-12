@@ -27,9 +27,10 @@ func (s *SnifferHexDumpDebugConn) Read(b []byte) (n int, err error) {
 	n, err = s.Conn.Read(b)
 	if n > 0 {
 		mu.Lock()
-		fmt.Printf("%s read %d bytes\n", s.Prefix, n)
+		fmt.Printf("%s r %d bytes\n", s.Prefix, n)
+		// fmt.Printf("%s r %d bytes %s\n", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n]))
 		if s.PrintDump {
-			utils.PrintHexDump(b[:n])
+			fmt.Println(utils.HexDump(b[:n]))
 		}
 		mu.Unlock()
 	}
@@ -40,9 +41,10 @@ func (s *SnifferHexDumpDebugConn) Write(b []byte) (n int, err error) {
 	n, err = s.Conn.Write(b)
 	if n > 0 {
 		mu.Lock()
-		fmt.Printf("%s write %d bytes\n", s.Prefix, n)
+		fmt.Printf("%s w %d bytes\n", s.Prefix, n)
+		// fmt.Printf("%s w %d bytes %s\n", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n]))
 		if s.PrintDump {
-			utils.PrintHexDump(b[:n])
+			fmt.Println(utils.HexDump(b[:n]))
 		}
 		mu.Unlock()
 	}
