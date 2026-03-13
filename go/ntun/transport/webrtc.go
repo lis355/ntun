@@ -10,26 +10,16 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-// TODO optimize json.Marshal(w.peer.LocalDescription()) do a  Trickle ICE send preferred candidate from sender
-
 const DataChannelName = "DC"
 
-type TurnServerInfo struct {
-	URL      string
-	Username string
-	Password string
-}
-
 type WebRTCTransport struct {
-	iceServerInfo *TurnServerInfo
-	peer          *webrtc.PeerConnection
-	dc            *webrtc.DataChannel
+	iceServer *webrtc.ICEServer
+	peer      *webrtc.PeerConnection
+	dc        *webrtc.DataChannel
 }
 
-func NewWebRTCTransport(iceServerInfo *TurnServerInfo) *WebRTCTransport {
-	return &WebRTCTransport{
-		iceServerInfo: iceServerInfo,
-	}
+func NewWebRTCTransport() *WebRTCTransport {
+	return &WebRTCTransport{}
 }
 
 func (w *WebRTCTransport) Transport() error {
@@ -37,14 +27,11 @@ func (w *WebRTCTransport) Transport() error {
 	return nil
 }
 
-func (w *WebRTCTransport) CreatePeer() error {
+func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
+	w.iceServer = iceServer
+
 	config := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{{
-			URLs:           []string{w.iceServerInfo.URL},
-			Username:       w.iceServerInfo.Username,
-			Credential:     w.iceServerInfo.Password,
-			CredentialType: webrtc.ICECredentialTypePassword,
-		}},
+		ICEServers: []webrtc.ICEServer{*w.iceServer},
 	}
 
 	peer, err := webrtc.NewPeerConnection(config)
@@ -67,18 +54,26 @@ func (w *WebRTCTransport) CreatePeer() error {
 	return nil
 }
 
-func (w *WebRTCTransport) CreateOffer() (sessionBuf []byte, err error) {
-	err = w.CreatePeer()
+type OfferInfo struct {
+	Session   *webrtc.SessionDescription
+	IceServer *webrtc.ICEServer
+	Candidate *webrtc.ICECandidateInit
+}
+
+func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, error) {
+	err := w.CreatePeer(iceServer)
 	if err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
 	dc, err := w.peer.CreateDataChannel(DataChannelName, nil)
 	if err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
 	w.handleDataChannel(dc)
+
+	var candidate *webrtc.ICECandidateInit
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
@@ -86,15 +81,16 @@ func (w *WebRTCTransport) CreateOffer() (sessionBuf []byte, err error) {
 		if c != nil &&
 			c.Typ == webrtc.ICECandidateTypeRelay {
 			slog.Debug(fmt.Sprintf("ICECandidate %s", c.String()))
+			if candidate == nil {
+				candidateInit := c.ToJSON()
+				candidate = &candidateInit
+				cancel()
+			}
 		}
 	})
 
 	w.peer.OnICEGatheringStateChange(func(s webrtc.ICEGathererState) {
 		slog.Debug(fmt.Sprintf("ICEGathererState %s", s))
-
-		if s == webrtc.ICEGathererStateComplete {
-			cancel()
-		}
 	})
 
 	offer, err := w.peer.CreateOffer(nil)
@@ -107,29 +103,31 @@ func (w *WebRTCTransport) CreateOffer() (sessionBuf []byte, err error) {
 
 	err = ctx.Err()
 	if err == context.DeadlineExceeded {
-		return sessionBuf, err
+		return nil, err
 	}
 
-	sessionBuf, err = json.Marshal(w.peer.LocalDescription())
+	offerInfo := &OfferInfo{Session: w.peer.LocalDescription(), IceServer: w.iceServer, Candidate: candidate}
+
+	infoBuf, err := json.Marshal(offerInfo)
 	if err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
-	return sessionBuf, err
+	return infoBuf, err
 }
 
-func (w *WebRTCTransport) CreateAnswer(offerBuf []byte) (sessionBuf []byte, err error) {
-	var offer webrtc.SessionDescription
-	if err := json.Unmarshal(offerBuf, &offer); err != nil {
-		return sessionBuf, fmt.Errorf("failed to unmarshal offer: %w", err)
+func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) (sessionBuf []byte, err error) {
+	var offerInfo OfferInfo
+	if err := json.Unmarshal(infoBuf, &offerInfo); err != nil {
+		return sessionBuf, err
 	}
 
-	err = w.CreatePeer()
+	err = w.CreatePeer(offerInfo.IceServer)
 	if err != nil {
 		return sessionBuf, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil &&
@@ -138,25 +136,27 @@ func (w *WebRTCTransport) CreateAnswer(offerBuf []byte) (sessionBuf []byte, err 
 		}
 	})
 
-	w.peer.OnICEGatheringStateChange(func(s webrtc.ICEGathererState) {
-		slog.Debug(fmt.Sprintf("ICEGathererState %s", s))
+	// w.peer.OnICEGatheringStateChange(func(s webrtc.ICEGathererState) {
+	// 	slog.Debug(fmt.Sprintf("ICEGathererState %s", s))
 
-		if s == webrtc.ICEGathererStateComplete {
-			cancel()
-		}
-	})
+	// 	if s == webrtc.ICEGathererStateComplete {
+	// 		cancel()
+	// 	}
+	// })
 
-	if err := w.peer.SetRemoteDescription(offer); err != nil {
+	if err := w.peer.SetRemoteDescription(*offerInfo.Session); err != nil {
 		return sessionBuf, err
 	}
+
+	w.peer.AddICECandidate(*offerInfo.Candidate)
 
 	answer, err := w.peer.CreateAnswer(nil)
 	w.peer.SetLocalDescription(answer)
 
-	<-ctx.Done()
+	// <-ctx.Done()
 
 	w.peer.OnICECandidate(nil)
-	w.peer.OnICEGatheringStateChange(nil)
+	// w.peer.OnICEGatheringStateChange(nil)
 
 	sessionBuf, err = json.Marshal(w.peer.LocalDescription())
 	if err != nil {
@@ -182,11 +182,18 @@ func (w *WebRTCTransport) SetAnswer(answerBuf []byte) error {
 func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 	w.dc = dc
 
-	w.dc.OnOpen(w.handleDataChannelOpen)
+	w.dc.OnOpen(w.handleDataChannelOnOpen)
+	w.dc.OnClose(w.handleDataChannelOnClose)
 	w.dc.OnMessage(w.handleDataChannelOnMessage)
 }
 
-func (w *WebRTCTransport) handleDataChannelOpen() {
+func (w *WebRTCTransport) handleDataChannelOnOpen() {
+	fmt.Println("Канал открыт")
+
+	w.dc.Send([]byte("Привет от пира1!"))
+}
+
+func (w *WebRTCTransport) handleDataChannelOnClose() {
 	fmt.Println("Канал открыт")
 
 	w.dc.Send([]byte("Привет от пира1!"))

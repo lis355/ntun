@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"ntun/internal/app"
 	"ntun/internal/conf"
@@ -19,7 +23,45 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pion/webrtc/v3"
 )
+
+func GZipBase64Encode(buf []byte) (string, error) {
+	var compressedBuf bytes.Buffer
+	gzipWriter := gzip.NewWriter(&compressedBuf)
+
+	_, err := gzipWriter.Write(buf)
+	if err != nil {
+		return "", fmt.Errorf("gzip write error: %w", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return "", fmt.Errorf("gzip close error: %w", err)
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(compressedBuf.Bytes())
+	return encoded, nil
+}
+
+func GZipBase64Decode(encoded string) ([]byte, error) {
+	compressedBuf, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode error: %w", err)
+	}
+
+	gzipReader, err := gzip.NewReader(bytes.NewReader(compressedBuf))
+	if err != nil {
+		return nil, fmt.Errorf("gzip reader error: %w", err)
+	}
+	defer gzipReader.Close()
+
+	buf, err := io.ReadAll(gzipReader)
+	if err != nil {
+		return nil, fmt.Errorf("gzip read error: %w", err)
+	}
+
+	return buf, nil
+}
 
 func main() {
 	app.InitEnv()
@@ -29,29 +71,25 @@ func main() {
 	slog.Info(fmt.Sprintf("%s v%s (%s)", app.Name, app.Version, runtime.Version()))
 	slog.Info("DEVELOPMENT")
 
-	type turnServer struct {
-		URLs     []string `json:"urls"`
-		Username string   `json:"username"`
-		Password string   `json:"credential"`
-	}
-
-	turnServers := make([]turnServer, 0)
-
+	var turnServers []webrtc.ICEServer
 	json.Unmarshal([]byte(os.Getenv("DEVELOP_WEB_RTC_SERVERS")), &turnServers)
 
-	tr1 := transport.NewWebRTCTransport(&transport.TurnServerInfo{
-		URL:      turnServers[0].URLs[0],
-		Username: turnServers[0].Username,
-		Password: turnServers[0].Password,
-	})
+	tr1 := transport.NewWebRTCTransport()
+	tr2 := transport.NewWebRTCTransport()
 
-	tr2 := transport.NewWebRTCTransport(&transport.TurnServerInfo{
-		URL:      turnServers[0].URLs[0],
-		Username: turnServers[0].Username,
-		Password: turnServers[0].Password,
-	})
+	offerBuf, err := tr1.CreateOffer(&turnServers[0])
+	if err != nil {
+		panic(err)
+	}
 
-	offerBuf, err := tr1.CreateOffer()
+	offerBufMsg, err := GZipBase64Encode(offerBuf)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Сжато: %d байт (было %d)\n", len(offerBufMsg), len(offerBuf))
+
+	offerBuf, err = GZipBase64Decode(offerBufMsg)
 	if err != nil {
 		panic(err)
 	}
