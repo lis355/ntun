@@ -3,9 +3,9 @@ package inputs
 import (
 	"encoding/hex"
 	"fmt"
-	"net"
 	"ntun/internal/dev"
 	"ntun/internal/utils"
+	"ntun/ntun/connections/outputs"
 	"testing"
 )
 
@@ -15,12 +15,9 @@ func TestSock5NoAuthServer(t *testing.T) {
 	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
 	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
 
+	sock5Server := NewSock5NoAuthServer(outputs.NewDirectOutput())
+
 	const proxyServerPort = 8082
-
-	sock5Server := NewSock5NoAuthServer(func(srcAddress, dstAddress string) (net.Conn, error) {
-		return net.Dial("tcp", dstAddress)
-	})
-
 	err := sock5Server.ListenAndServe(proxyServerPort)
 	if err != nil {
 		t.Fatal(err)

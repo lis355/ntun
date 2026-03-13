@@ -1,10 +1,5 @@
 package ntun
 
-import (
-	"context"
-	"net"
-)
-
 const (
 	Byte     = 1
 	Kilobyte = Byte * 1024
@@ -16,15 +11,6 @@ const (
 type Service interface {
 	Start() error
 	Stop() error
-}
-
-type Transporter interface {
-	Service
-	Transport() <-chan net.Conn
-}
-
-type Dialer interface {
-	Dial(ctx context.Context, address string) (net.Conn, error)
 }
 
 type Input interface {

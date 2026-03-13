@@ -12,7 +12,9 @@ import (
 	"os"
 )
 
-func dial(srcAddress, dstAddress string) (net.Conn, error) {
+type Dialer struct{}
+
+func (d *Dialer) Dial(dstAddress string) (net.Conn, error) {
 	dstConn, err := net.Dial("tcp", dstAddress)
 	// dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("%s <--> %s", srcAddress, dstAddress), true)
 	protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
@@ -36,7 +38,7 @@ func main() {
 	log.Init()
 
 	const proxyServerPort = 8082
-	sock5Server := inputs.NewSock5NoAuthServer(dial)
+	sock5Server := inputs.NewSock5NoAuthServer(&Dialer{})
 	err := sock5Server.ListenAndServe(proxyServerPort)
 	if err != nil {
 		panic(err)

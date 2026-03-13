@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 )
 
 type SimpleHttpEchoServer struct {
@@ -30,6 +32,12 @@ func (s *SimpleHttpEchoServer) ListenAndServe(port uint16) error {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(err.Error()))
 		} else {
+			n, err := strconv.Atoi(string(body))
+			if err == nil &&
+				n > 0 {
+				time.Sleep(time.Duration(n) * time.Millisecond)
+			}
+
 			w.WriteHeader(http.StatusOK)
 			w.Write(body)
 		}

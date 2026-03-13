@@ -8,10 +8,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"ntun/internal/connections"
 	"ntun/ntun"
+	"ntun/ntun/connections"
 	"strconv"
-	"sync"
 )
 
 const (
@@ -20,16 +19,14 @@ const (
 	methodNoAcceptable byte = 0xFF // 0xFF = No Acceptable Methods
 )
 
-type DialFunc func(srcAdress, dstAddress string) (net.Conn, error)
-
 type Sock5NoAuthServer struct {
-	dial     DialFunc
+	dialer   connections.Dialer
 	listener net.Listener
 }
 
-func NewSock5NoAuthServer(dial DialFunc) (c *Sock5NoAuthServer) {
+func NewSock5NoAuthServer(dialer connections.Dialer) (c *Sock5NoAuthServer) {
 	return &Sock5NoAuthServer{
-		dial: dial,
+		dialer: dialer,
 	}
 }
 
@@ -48,8 +45,6 @@ func (s *Sock5NoAuthServer) ListenAndServe(port uint16) error {
 			conn, err := listener.Accept()
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
-					slog.Debug("[Sock5NoAuthServer] closed")
-
 					return
 				}
 
@@ -93,7 +88,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 
 	dstConn, err := s.handleDial(srcConn, address)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
+		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] dial error: %v", err))
 
 		srcConn.Close()
 
@@ -106,23 +101,23 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	// dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("socks"), false)
 
 	// DEBUG
-	protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
-	dstConn = protocolDetectorConn
+	// protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
+	// dstConn = protocolDetectorConn
 
-	var protocolWg sync.WaitGroup
-	protocolWg.Add(1)
+	// var protocolWg sync.WaitGroup
+	// protocolWg.Add(1)
 
-	go func() {
-		defer protocolWg.Done()
+	// go func() {
+	// 	defer protocolWg.Done()
 
-		protocol := <-protocolDetectorConn.Detected
-		switch pr := protocol.(type) {
-		case *connections.HttpProtocol:
-			slog.Info(fmt.Sprintf("detected %s protocol", pr.Protocol()))
-		case *connections.HttpsProtocol:
-			slog.Info(fmt.Sprintf("detected %s protocol %s", pr.Protocol(), pr.Domain))
-		}
-	}()
+	// 	protocol := <-protocolDetectorConn.Detected
+	// 	switch pr := protocol.(type) {
+	// 	case *connections.HttpProtocol:
+	// 		slog.Info(fmt.Sprintf("detected %s protocol", pr.Protocol()))
+	// 	case *connections.HttpsProtocol:
+	// 		slog.Info(fmt.Sprintf("detected %s protocol %s", pr.Protocol(), pr.Domain))
+	// 	}
+	// }()
 
 	err = ntun.Proxy(srcConn, dstConn)
 	if err != nil {
@@ -131,7 +126,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 		return
 	}
 
-	protocolWg.Wait()
+	// protocolWg.Wait()
 
 	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 }
@@ -140,7 +135,7 @@ func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Co
 	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
 
 	// Connect to target
-	dstConn, err := s.dial(srcConn.RemoteAddr().String(), address)
+	dstConn, err := s.dialer.Dial(address)
 	if err != nil {
 		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
 		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
@@ -150,7 +145,6 @@ func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Co
 
 	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
 	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
-
 		dstConn.Close()
 
 		return nil, err

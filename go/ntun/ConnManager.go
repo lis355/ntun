@@ -4,32 +4,42 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"ntun/internal/app"
-	"ntun/internal/dev"
-	"ntun/internal/mux"
+	"ntun/internal/connections"
+	ntunConnections "ntun/ntun/connections"
+	"ntun/ntun/transport"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/libp2p/go-yamux"
 )
 
 type ConnManager struct {
 	node          *Node
-	transporter   Transporter
+	dialer        ntunConnections.Dialer
+	transporter   transport.Transporter
 	transportConn net.Conn
-	mux           *mux.Mux
+	inHs, outHs   *TransportHandshake
+	client        bool
+	// mux           *mux.Mux
+	session      *yamux.Session
+	wasConnected bool
 }
 
-func NewConnManager(node *Node) *ConnManager {
+func NewConnManager(node *Node, dialer ntunConnections.Dialer) *ConnManager {
 	return &ConnManager{
 		node:        node,
+		dialer:      dialer,
 		transporter: node.Transporter,
 	}
 }
 
 func (m *ConnManager) Start() error {
-	// DEBUG
-	//go m.process()
+	go m.process()
 
 	return nil
 }
@@ -39,9 +49,14 @@ func (m *ConnManager) Stop() error {
 }
 
 func (m *ConnManager) clear() {
-	if m.mux != nil {
-		m.mux.Close()
-		m.mux = nil
+	// if m.mux != nil {
+	// 	m.mux.Close()
+	// 	m.mux = nil
+	// }
+
+	if m.session != nil {
+		m.session.Close()
+		m.session = nil
 	}
 
 	if m.transportConn != nil {
@@ -51,8 +66,19 @@ func (m *ConnManager) clear() {
 }
 
 func (m *ConnManager) process() {
-	for transportConn := range m.transporter.Transport() {
-		m.handleTransportConn(transportConn)
+	for {
+		transportConn, err := m.transporter.Transport()
+		if err == nil {
+			m.handleTransportConn(transportConn)
+		}
+
+		if !m.wasConnected {
+			slog.Warn(fmt.Sprintf("[%s:ConnManager] can't get transport, waiting", m.node.String()))
+
+			time.Sleep(3 * time.Second)
+		}
+
+		m.wasConnected = false
 	}
 }
 
@@ -72,42 +98,70 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 
 	err = m.doTransportHandshake()
 	if err != nil {
-		slog.Warn(fmt.Sprintf("[%s:ConnManager] bad hs connection %s", m.node.String(), transportConn.RemoteAddr().String()))
+		slog.Warn(fmt.Sprintf("[%s:ConnManager] bad hs connection %s %v", m.node.String(), transportConn.RemoteAddr().String(), err))
 
 		m.clear()
 
 		return
 	}
 
-	m.mux = mux.NewMux(m.transportConn)
-	muxListener, err := m.mux.Listen()
+	// DEBUG turn off yamux warnings about tcp resets
+	config := yamux.DefaultConfig()
+	config.LogOutput = io.Discard
+
+	var session *yamux.Session
+	if m.client {
+		session, err = yamux.Client(m.transportConn, config)
+	} else {
+		session, err = yamux.Server(m.transportConn, config)
+	}
 	if err != nil {
 		m.clear()
 
 		return
 	}
 
-	go func() {
-		for {
-			conn, err := muxListener.Accept()
-			if err != nil {
-				m.clear()
+	m.wasConnected = true
 
-				return
-			}
+	slog.Info(fmt.Sprintf("[%s:ConnManager] node %s connected", m.node.String(), m.inHs.Id.String()))
 
-			go m.handleMuxConn(conn)
+	m.session = session
+
+	// go func() {
+	// 	time.Sleep(1 * time.Second)
+	// 	m.transportConn.Close()
+	// }()
+
+	// m.mux = mux.NewMux(m.transportConn)
+	// muxListener, err := m.mux.Listen()
+	// if err != nil {
+	// 	m.clear()
+
+	// 	return
+	// }
+
+	for {
+		conn, err := m.session.Accept()
+		// conn, err := muxListener.Accept()
+		if err != nil {
+			slog.Info(fmt.Sprintf("[%s:ConnManager] node %s disconnected %v", m.node.String(), m.inHs.Id.String(), err))
+
+			m.clear()
+
+			return
 		}
-	}()
+
+		go m.handleMuxConn(conn)
+	}
 }
 
 func (m *ConnManager) cipherTransportConn() error {
-	// cipherAesGcmConn, err := connections.NewCipherAesGcmConn(m.transportConn, []byte(m.node.Config.CipherKey))
-	// if err != nil {
-	// 	return err
-	// }
+	cipherAesGcmConn, err := connections.NewCipherAesGcmConn(m.transportConn, []byte(m.node.Config.CipherKey))
+	if err != nil {
+		return err
+	}
 
-	// m.transportConn = cipherAesGcmConn
+	m.transportConn = cipherAesGcmConn
 
 	return nil
 }
@@ -131,7 +185,7 @@ func WriteMsg[T any](conn net.Conn, msg *T) error {
 		return err
 	}
 	if n != len(msgLenBuf) {
-		return fmt.Errorf("Bad write %d bytes, expected %d", n, len(msgLenBuf))
+		return fmt.Errorf("bad write %d bytes, expected %d", n, len(msgLenBuf))
 	}
 
 	n, err = conn.Write(msgBuf)
@@ -139,7 +193,7 @@ func WriteMsg[T any](conn net.Conn, msg *T) error {
 		return err
 	}
 	if n != len(msgBuf) {
-		return fmt.Errorf("Bad write %d bytes, expected %d", n, len(msgBuf))
+		return fmt.Errorf("bad write %d bytes, expected %d", n, len(msgBuf))
 	}
 
 	return nil
@@ -152,7 +206,7 @@ func ReadMsg[T any](conn net.Conn, msg *T) error {
 		return err
 	}
 	if n != len(msgLenBuf) {
-		return fmt.Errorf("Bad read %d bytes, expected %d", n, len(msgLenBuf))
+		return fmt.Errorf("bad read %d bytes, expected %d", n, len(msgLenBuf))
 	}
 
 	msgLen := binary.BigEndian.Uint32(msgLenBuf)
@@ -163,7 +217,7 @@ func ReadMsg[T any](conn net.Conn, msg *T) error {
 		return err
 	}
 	if n != len(msgBuf) {
-		return fmt.Errorf("Bad read %d bytes, expected %d", n, len(msgBuf))
+		return fmt.Errorf("bad read %d bytes, expected %d", n, len(msgBuf))
 	}
 
 	err = json.Unmarshal(msgBuf, &msg)
@@ -174,31 +228,49 @@ func ReadMsg[T any](conn net.Conn, msg *T) error {
 	return nil
 }
 
+func CmpUUID(a, b uuid.UUID) int {
+	for i := 0; i < 16; i++ {
+		if a[i] < b[i] {
+			return -1
+		} else if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
+}
+
 func (m *ConnManager) doTransportHandshake() error {
-	outHs := &TransportHandshake{Version: app.Version, Id: m.node.Config.Id}
+	m.outHs = &TransportHandshake{Version: app.Version, Id: m.node.Config.Id}
 
-	err := WriteMsg(m.transportConn, outHs)
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] written transport hs %+v", m.node.String(), outHs))
+	err := WriteMsg(m.transportConn, m.outHs)
+	slog.Debug(fmt.Sprintf("[%s:ConnManager] written transport hs %+v", m.node.String(), m.outHs))
 	if err != nil {
 		return err
 	}
 
-	var inHs TransportHandshake
-	err = ReadMsg(m.transportConn, &inHs)
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] readed transport hs %+v", m.node.String(), &inHs))
+	err = ReadMsg(m.transportConn, &m.inHs)
+	slog.Debug(fmt.Sprintf("[%s:ConnManager] readed transport hs %+v", m.node.String(), m.inHs))
 	if err != nil {
 		return err
 	}
 
-	if inHs.Version != outHs.Version {
-		return fmt.Errorf("Handshake version mismatch %s != %s", inHs.Version, outHs.Version)
+	if m.inHs.Version != m.outHs.Version {
+		return fmt.Errorf("handshake version mismatch %s != %s", m.inHs.Version, m.outHs.Version)
 	}
 
-	if !m.node.HasAllowedToConnectNodeId(inHs.Id) {
-		return fmt.Errorf("Handshake not allowed node with id %s", inHs.Id.String())
+	cmpId := CmpUUID(m.outHs.Id, m.inHs.Id)
+
+	if cmpId == 0 {
+		return fmt.Errorf("handshake bad ids %s %s", m.outHs.Id, m.inHs.Id)
 	}
 
-	slog.Info(fmt.Sprintf("[%s:ConnManager] node %s connected", m.node.String(), inHs.Id.String()))
+	if !m.node.HasAllowedToConnectNodeId(m.inHs.Id) {
+		return fmt.Errorf("handshake not allowed node with id %s", m.inHs.Id)
+	}
+
+	// NOTE нужно для создания yamux, т.к. айдишники нод всегда разные,
+	// какой-то из них математически меньше другого - пусть он будет yamux клиентом
+	m.client = cmpId < 0
 
 	return nil
 }
@@ -226,48 +298,57 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 	}
 
 	// DEBUG
-	conn = dev.NewSnifferHexDumpDebugConn(conn, fmt.Sprintf("direct"), false)
+	// conn = dev.NewSnifferHexDumpDebugConn(conn, fmt.Sprintf("direct"), false)
 
 	// DEBUG
-	// protocolDetectorConn := connections.NewProtocolDetectorConn(outConn)
-	// outConn = protocolDetectorConn
+	protocolDetectorConn := connections.NewProtocolDetectorConn(outConn)
+	outConn = protocolDetectorConn
 
-	// var wg sync.WaitGroup
-	// wg.Add(1)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	// go func() {
-	// 	defer wg.Done()
+	go func() {
+		defer wg.Done()
 
-	// 	protocol := <-protocolDetectorConn.Detected
-	// 	switch pr := protocol.(type) {
-	// 	case *connections.HttpProtocol:
-	// 		slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol", m.node.String(), pr.Protocol()))
-	// 	case *connections.HttpsProtocol:
-	// 		slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol %s", m.node.String(), pr.Protocol(), pr.Domain))
-	// 	}
-	// }()
+		protocol := <-protocolDetectorConn.Detected
+		switch pr := protocol.(type) {
+		case *connections.HttpProtocol:
+			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol", m.node.String(), pr.Protocol()))
+		case *connections.HttpsProtocol:
+			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol %s", m.node.String(), pr.Protocol(), pr.Domain))
+		}
+	}()
 
 	err = Proxy(conn, outConn)
 	if err != nil {
 		return
 	}
 
-	// wg.Wait()
+	wg.Wait()
 }
 
-func (m *ConnManager) Dial(srcAddress, dstAddress string) (net.Conn, error) {
+func (m *ConnManager) Dial(dstAddress string) (net.Conn, error) {
 	// DEBUG
-	return net.Dial("tcp", dstAddress)
+	// return net.Dial("tcp", dstAddress)
 
-	// if mux created, it means hs passed and connection established
-	if m.mux == nil {
+	if m.session == nil {
 		return nil, net.ErrClosed
 	}
 
-	dstConn, err := m.mux.CreateStream()
+	dstConn, err := m.session.Open()
 	if err != nil {
 		return nil, err
 	}
+
+	// // if mux created, it means hs passed and connection established
+	// if m.mux == nil {
+	// 	return nil, net.ErrClosed
+	// }
+
+	// dstConn, err := m.mux.CreateStream()
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream created %s <--> %s", m.node.String(), srcAddress, dstAddress))
 

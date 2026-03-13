@@ -78,7 +78,7 @@ func (r *Requester) Get(urlStr string) (string, error) {
 
 	elapsed := time.Since(start)
 
-	slog.Debug(fmt.Sprintf("[Requester.Get] [socks5://%s] --> %s %v [%s] %s", r.socks5ProxyAddress, urlStr, elapsed, resp.Status, bodyStr[:10]))
+	slog.Debug(fmt.Sprintf("[Requester.Get] [socks5://%s] --> %s %v [%s] %s", r.socks5ProxyAddress, urlStr, elapsed, resp.Status, bodyStr[:min(len(bodyStr), 10)]))
 
 	return bodyStr, nil
 }
@@ -136,7 +136,7 @@ func (r *Requester) Post(urlStr, requestBody string) (string, error) {
 
 	elapsed := time.Since(start)
 
-	slog.Debug(fmt.Sprintf("[Requester.Post] [socks5://%s] --> %s %v [%s] %s", r.socks5ProxyAddress, urlStr, elapsed, resp.Status, bodyStr[:10]))
+	slog.Debug(fmt.Sprintf("[Requester.Post] [socks5://%s] --> %s %v [%s] %s", r.socks5ProxyAddress, urlStr, elapsed, resp.Status, bodyStr[:min(len(bodyStr), 10)]))
 
 	return bodyStr, nil
 }

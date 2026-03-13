@@ -3,23 +3,25 @@ package ntun
 import (
 	"log/slog"
 	"ntun/internal/conf"
+	"ntun/ntun/connections/outputs"
+	"ntun/ntun/transport"
 
 	"github.com/google/uuid"
 )
 
 type Node struct {
 	Config *conf.Config
-	Transporter
+	transport.Transporter
 	*ConnManager
 }
 
-func NewNode(config *conf.Config, transporter Transporter) *Node {
+func NewNode(config *conf.Config, transporter transport.Transporter) *Node {
 	node := &Node{
 		Config:      config,
 		Transporter: transporter,
 	}
 
-	node.ConnManager = NewConnManager(node)
+	node.ConnManager = NewConnManager(node, outputs.NewDirectOutput())
 
 	return node
 }
@@ -49,10 +51,10 @@ func (n *Node) Start() error {
 		return err
 	}
 
-	err = n.Transporter.Start()
-	if err != nil {
-		return err
-	}
+	// err = n.Transporter.Start()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return err
 }
@@ -66,10 +68,10 @@ func (n *Node) Stop() error {
 		return err
 	}
 
-	err = n.Transporter.Stop()
-	if err != nil {
-		return err
-	}
+	// err = n.Transporter.Stop()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return err
 }
