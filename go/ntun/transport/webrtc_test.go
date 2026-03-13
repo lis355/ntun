@@ -6,5 +6,5 @@ import (
 )
 
 func TestWebRTCTransport(t *testing.T) {
-	app.InitEnv()
+	app.Init()
 }

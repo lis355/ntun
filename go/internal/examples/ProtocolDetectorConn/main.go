@@ -34,7 +34,7 @@ func (d *Dialer) Dial(dstAddress string) (net.Conn, error) {
 }
 
 func main() {
-	app.InitEnv()
+	app.Init()
 	log.Init()
 
 	const proxyServerPort = 8082

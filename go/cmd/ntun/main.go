@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	app.InitEnv()
+	app.Init()
 	log.Init()
 
 	slog.Info(fmt.Sprintf("%s v%s (%s)", app.Name, app.Version, runtime.Version()))

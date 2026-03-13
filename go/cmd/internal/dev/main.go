@@ -60,7 +60,7 @@ func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded string) ([]byte
 }
 
 func main() {
-	app.InitEnv()
+	app.Init()
 	log.Init()
 	os.Setenv("DEVELOPMENT", "true")
 
