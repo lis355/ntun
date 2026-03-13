@@ -51,7 +51,7 @@ func Proxy(srcConn, dstConn net.Conn) error {
 	srcConn.Close()
 	dstConn.Close()
 
-	slog.Debug(fmt.Sprintf("Done proxying %s <--> %s %v", srcConn.RemoteAddr(), dstConn.RemoteAddr(), err))
+	slog.Debug(fmt.Sprintf("Done proxying %s <--> %s err=%v", srcConn.RemoteAddr(), dstConn.RemoteAddr(), err))
 
 	return nil
 }

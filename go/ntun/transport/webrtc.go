@@ -4,27 +4,43 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
 )
 
-const DataChannelName = "DC"
+const (
+	DataChannelName     = "DC"
+	ICEGatheringTimeout = 30 * time.Second
+)
 
 type WebRTCTransport struct {
-	iceServer *webrtc.ICEServer
-	peer      *webrtc.PeerConnection
-	dc        *webrtc.DataChannel
+	iceServer   *webrtc.ICEServer
+	peer        *webrtc.PeerConnection
+	dc          *webrtc.DataChannel
+	transportCh chan struct{}
+	dcOpenCh    chan struct{}
+	dcCloseCh   chan struct{}
+	dcWriteCh   chan []byte
+	wconn       *webRTCConn
 }
 
 func NewWebRTCTransport() *WebRTCTransport {
-	return &WebRTCTransport{}
+	return &WebRTCTransport{
+		transportCh: make(chan struct{}),
+		dcOpenCh:    make(chan struct{}),
+		dcCloseCh:   make(chan struct{}),
+		dcWriteCh:   make(chan []byte),
+	}
 }
 
-func (w *WebRTCTransport) Transport() error {
-
-	return nil
+func (w *WebRTCTransport) Transport() (net.Conn, error) {
+	<-w.transportCh
+	return w.wconn, nil
 }
 
 func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
@@ -42,11 +58,7 @@ func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
 	w.peer = peer
 
 	w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
-		slog.Debug(fmt.Sprintf("ICEConnectionState %s", s))
-
-		if s == webrtc.ICEConnectionStateConnected {
-			//
-		}
+		slog.Debug(fmt.Sprintf("[WebRTCTransport]: %p ICEConnectionState %s", w, s))
 	})
 
 	w.peer.OnDataChannel(w.handleDataChannel)
@@ -75,22 +87,18 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 
 	var candidate *webrtc.ICECandidateInit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ICEGatheringTimeout)
 
 	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil &&
 			c.Typ == webrtc.ICECandidateTypeRelay {
-			slog.Debug(fmt.Sprintf("ICECandidate %s", c.String()))
+			slog.Debug(fmt.Sprintf("[WebRTCTransport]: %p ICECandidate %s", w, c.String()))
 			if candidate == nil {
 				candidateInit := c.ToJSON()
 				candidate = &candidateInit
 				cancel()
 			}
 		}
-	})
-
-	w.peer.OnICEGatheringStateChange(func(s webrtc.ICEGathererState) {
-		slog.Debug(fmt.Sprintf("ICEGathererState %s", s))
 	})
 
 	offer, err := w.peer.CreateOffer(nil)
@@ -127,23 +135,6 @@ func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) (sessionBuf []byte, err e
 		return sessionBuf, err
 	}
 
-	// ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
-		if c != nil &&
-			c.Typ == webrtc.ICECandidateTypeRelay {
-			slog.Debug(fmt.Sprintf("ICECandidate %s", c.String()))
-		}
-	})
-
-	// w.peer.OnICEGatheringStateChange(func(s webrtc.ICEGathererState) {
-	// 	slog.Debug(fmt.Sprintf("ICEGathererState %s", s))
-
-	// 	if s == webrtc.ICEGathererStateComplete {
-	// 		cancel()
-	// 	}
-	// })
-
 	if err := w.peer.SetRemoteDescription(*offerInfo.Session); err != nil {
 		return sessionBuf, err
 	}
@@ -152,11 +143,6 @@ func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) (sessionBuf []byte, err e
 
 	answer, err := w.peer.CreateAnswer(nil)
 	w.peer.SetLocalDescription(answer)
-
-	// <-ctx.Done()
-
-	w.peer.OnICECandidate(nil)
-	// w.peer.OnICEGatheringStateChange(nil)
 
 	sessionBuf, err = json.Marshal(w.peer.LocalDescription())
 	if err != nil {
@@ -179,26 +165,181 @@ func (w *WebRTCTransport) SetAnswer(answerBuf []byte) error {
 	return nil
 }
 
+func (w *WebRTCTransport) Close() {
+	w.peer.Close()
+}
+
 func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 	w.dc = dc
+	w.wconn = &webRTCConn{
+		webrtc:  w,
+		readCh:  make(chan []byte),
+		readBuf: make([]byte, 0),
+	}
 
 	w.dc.OnOpen(w.handleDataChannelOnOpen)
 	w.dc.OnClose(w.handleDataChannelOnClose)
 	w.dc.OnMessage(w.handleDataChannelOnMessage)
+
+	go func() {
+		for {
+			select {
+			case buf, ok := <-w.dcWriteCh:
+				if !ok {
+					w.dcWriteCh = nil
+					return
+				}
+
+				if err := w.dc.Send(buf); err != nil {
+					w.Close()
+
+					return
+				}
+			case _, ok := <-w.dcOpenCh:
+				if !ok {
+					w.dcOpenCh = nil
+					return
+				}
+				w.dcWriteCh = make(chan []byte)
+				w.transportCh <- struct{}{}
+			case _, ok := <-w.dcCloseCh:
+				if !ok {
+					w.dcCloseCh = nil
+					return
+				}
+
+				w.wconn.lock.Lock()
+				close(w.dcWriteCh)
+				w.dcWriteCh = nil
+
+				close(w.wconn.readCh)
+				w.wconn.readCh = nil
+
+				w.wconn.closed = true
+				w.wconn.lock.Unlock()
+
+				w.wconn = nil
+
+				w.dc.OnOpen(nil)
+				w.dc.OnClose(nil)
+				w.dc.OnMessage(nil)
+
+				w.dc = nil
+
+				return
+			}
+		}
+	}()
 }
 
 func (w *WebRTCTransport) handleDataChannelOnOpen() {
-	fmt.Println("Канал открыт")
-
-	w.dc.Send([]byte("Привет от пира1!"))
+	w.dcOpenCh <- struct{}{}
 }
 
 func (w *WebRTCTransport) handleDataChannelOnClose() {
-	fmt.Println("Канал открыт")
-
-	w.dc.Send([]byte("Привет от пира1!"))
+	w.dcCloseCh <- struct{}{}
 }
 
 func (w *WebRTCTransport) handleDataChannelOnMessage(msg webrtc.DataChannelMessage) {
-	fmt.Printf("Пир1 получил: %s\n", string(msg.Data))
+	w.wconn.lock.Lock()
+	if w.wconn.closed {
+		w.wconn.lock.Unlock()
+		return
+	}
+	w.wconn.lock.Unlock()
+
+	w.wconn.readCh <- msg.Data
+}
+
+type webRTCConn struct {
+	lock    sync.Mutex
+	closed  bool
+	webrtc  *WebRTCTransport
+	readCh  chan []byte
+	readBuf []byte
+}
+
+func (w *webRTCConn) Read(b []byte) (n int, err error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+
+	w.lock.Lock()
+	if w.closed {
+		w.lock.Unlock()
+
+		return 0, io.ErrClosedPipe
+	}
+
+	if len(w.readBuf) > 0 {
+		n = copy(b, w.readBuf)
+		w.readBuf = w.readBuf[n:]
+		w.lock.Unlock()
+
+		return n, nil
+	}
+	w.lock.Unlock()
+
+	buf, ok := <-w.readCh
+	if !ok {
+		return 0, io.EOF
+	}
+
+	w.lock.Lock()
+	w.readBuf = append(w.readBuf, buf...)
+
+	n = copy(b, w.readBuf)
+	w.readBuf = w.readBuf[n:]
+	w.lock.Unlock()
+
+	return n, nil
+}
+
+func (w *webRTCConn) Write(b []byte) (n int, err error) {
+	w.lock.Lock()
+	if w.closed {
+		w.lock.Unlock()
+
+		return 0, io.ErrClosedPipe
+	}
+	w.lock.Unlock()
+
+	w.webrtc.dcWriteCh <- b
+
+	return len(b), nil
+}
+
+func (w *webRTCConn) Close() error {
+	w.lock.Lock()
+	if w.closed {
+		w.lock.Unlock()
+		return nil
+	}
+
+	w.closed = true
+	w.lock.Unlock()
+
+	w.webrtc.Close()
+
+	return nil
+}
+
+func (w *webRTCConn) LocalAddr() net.Addr {
+	return &net.UnixAddr{Net: "webrtc", Name: "webrtc"}
+}
+
+func (w *webRTCConn) RemoteAddr() net.Addr {
+	return &net.UnixAddr{Net: "webrtc", Name: "webrtc"}
+}
+
+func (w *webRTCConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (w *webRTCConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (w *webRTCConn) SetWriteDeadline(t time.Time) error {
+	return nil
 }

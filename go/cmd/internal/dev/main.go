@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"ntun/internal/app"
 	"ntun/internal/conf"
@@ -15,6 +12,7 @@ import (
 	"ntun/internal/log"
 	"ntun/internal/utils"
 	"ntun/ntun"
+	"ntun/ntun/cipher"
 	"ntun/ntun/connections/inputs"
 	"ntun/ntun/transport"
 	"os"
@@ -26,38 +24,36 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func GZipBase64Encode(buf []byte) (string, error) {
-	var compressedBuf bytes.Buffer
-	gzipWriter := gzip.NewWriter(&compressedBuf)
-
-	_, err := gzipWriter.Write(buf)
+func GZipCipherBase64Encode(cipher *cipher.CipherAesGcm, buf []byte) (string, error) {
+	compressedBuf, err := utils.GZipEncode(buf)
 	if err != nil {
-		return "", fmt.Errorf("gzip write error: %w", err)
+		return "", err
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		return "", fmt.Errorf("gzip close error: %w", err)
+	encryptedBuf, err := cipher.Encrypt(compressedBuf)
+	if err != nil {
+		return "", err
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(compressedBuf.Bytes())
+	encoded := base64.StdEncoding.EncodeToString(encryptedBuf)
+
 	return encoded, nil
 }
 
-func GZipBase64Decode(encoded string) ([]byte, error) {
-	compressedBuf, err := base64.StdEncoding.DecodeString(encoded)
+func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded string) ([]byte, error) {
+	encryptedBuf, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("base64 decode error: %w", err)
+		return nil, err
 	}
 
-	gzipReader, err := gzip.NewReader(bytes.NewReader(compressedBuf))
+	compressedBuf, err := cipher.Decrypt(encryptedBuf)
 	if err != nil {
-		return nil, fmt.Errorf("gzip reader error: %w", err)
+		return nil, err
 	}
-	defer gzipReader.Close()
 
-	buf, err := io.ReadAll(gzipReader)
+	buf, err := utils.GZipDecode(compressedBuf)
 	if err != nil {
-		return nil, fmt.Errorf("gzip read error: %w", err)
+		return nil, err
 	}
 
 	return buf, nil
@@ -71,6 +67,9 @@ func main() {
 	slog.Info(fmt.Sprintf("%s v%s (%s)", app.Name, app.Version, runtime.Version()))
 	slog.Info("DEVELOPMENT")
 
+	clientId, serverId := uuid.New(), uuid.New()
+	cipherKey := hex.EncodeToString(utils.RandBytes(8))
+
 	var turnServers []webrtc.ICEServer
 	json.Unmarshal([]byte(os.Getenv("DEVELOP_WEB_RTC_SERVERS")), &turnServers)
 
@@ -82,14 +81,19 @@ func main() {
 		panic(err)
 	}
 
-	offerBufMsg, err := GZipBase64Encode(offerBuf)
+	cipher, err := cipher.NewCipherAesGcm([]byte(cipherKey))
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("Сжато: %d байт (было %d)\n", len(offerBufMsg), len(offerBuf))
+	offerBufMsg, err := GZipCipherBase64Encode(cipher, offerBuf)
+	if err != nil {
+		panic(err)
+	}
 
-	offerBuf, err = GZipBase64Decode(offerBufMsg)
+	slog.Debug(fmt.Sprintf("GZipCipherBase64Encode: %d / %d bytes", len(offerBufMsg), len(offerBuf)))
+
+	offerBuf, err = GZipCipherBase64Decode(cipher, offerBufMsg)
 	if err != nil {
 		panic(err)
 	}
@@ -104,16 +108,51 @@ func main() {
 		panic(err)
 	}
 
-	select {}
+	// var wg sync.WaitGroup
+	// wg.Add(2)
 
-	clientId, serverId := uuid.New(), uuid.New()
-	cipherKey := hex.EncodeToString(utils.RandBytes(8))
+	// go func() {
+	// 	defer wg.Done()
+
+	// 	connA, err := tr1.Transport()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+
+	// 	connA.Write([]byte(cipherKey))
+	// 	slog.Debug(fmt.Sprintf("connA.Write: %s", cipherKey))
+	// }()
+
+	// var connB net.Conn
+	// go func() {
+	// 	defer wg.Done()
+
+	// 	connB, err = tr2.Transport()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+
+	// 	buf := make([]byte, 32)
+	// 	for {
+	// 		n, err := connB.Read(buf)
+	// 		if err != nil {
+	// 			return
+	// 		}
+	// 		slog.Debug(fmt.Sprintf("connB.Read: %s", buf[:n]))
+	// 		connB.Close()
+	// 	}
+	// }()
+
+	// wg.Wait()
+
+	// connB.Close()
 
 	// Client
 
 	const nodeTcpServerConnPort = 8080
 
-	clientTransport := transport.NewTcpClientTransport(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
+	// clientTransport := transport.NewTcpClientTransport(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
+	clientTransport := tr1
 	clientNode := ntun.NewNode(&conf.Config{Id: clientId, Name: "client", Allowed: []uuid.UUID{serverId}, CipherKey: cipherKey}, clientTransport)
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
 	clientNode.Start()
@@ -127,11 +166,12 @@ func main() {
 
 	// Server
 
-	serverTransport := transport.NewTcpServerTransport(nodeTcpServerConnPort)
-	err = serverTransport.Listen()
-	if err != nil {
-		panic(err)
-	}
+	// serverTransport := transport.NewTcpServerTransport(nodeTcpServerConnPort)
+	// err = serverTransport.Listen()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	serverTransport := tr2
 
 	serverNode := ntun.NewNode(&conf.Config{Id: serverId, Name: "server", Allowed: []uuid.UUID{clientId}, CipherKey: cipherKey}, serverTransport)
 	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
@@ -139,7 +179,7 @@ func main() {
 
 	// Test
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(3 * time.Second)
 
 	const simpleHttpEchoServerPort = 8082
 	var simpleHttpEchoServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)

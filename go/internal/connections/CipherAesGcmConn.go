@@ -1,14 +1,10 @@
 package connections
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
+	"ntun/ntun/cipher"
 )
 
 const (
@@ -19,28 +15,19 @@ const (
 
 type CipherAesGcmConn struct {
 	net.Conn
-	aesGCM  cipher.AEAD
+	cipher  *cipher.CipherAesGcm
 	readBuf []byte
 }
 
 func NewCipherAesGcmConn(conn net.Conn, key []byte) (*CipherAesGcmConn, error) {
-	// hash the key to 32 bytes, to not to depend on the key length
-	keyHash32 := sha256.Sum256(key)
-	keyHash := keyHash32[:]
-
-	block, err := aes.NewCipher(keyHash)
-	if err != nil {
-		return nil, err
-	}
-
-	aesGCM, err := cipher.NewGCM(block)
+	cipher, err := cipher.NewCipherAesGcm(key)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CipherAesGcmConn{
 		Conn:    conn,
-		aesGCM:  aesGCM,
+		cipher:  cipher,
 		readBuf: make([]byte, 0),
 	}, nil
 }
@@ -48,7 +35,7 @@ func NewCipherAesGcmConn(conn net.Conn, key []byte) (*CipherAesGcmConn, error) {
 func (c *CipherAesGcmConn) Write(b []byte) (n int, err error) {
 	for i := 0; i < len(b); i += maxChunkLen {
 		chunk := b[i:min(len(b), i+maxChunkLen)]
-		encryptedChunk, err := c.encrypt(chunk)
+		encryptedChunk, err := c.cipher.Encrypt(chunk)
 		if err != nil {
 			return n, err
 		}
@@ -94,7 +81,7 @@ func (c *CipherAesGcmConn) Read(b []byte) (n int, err error) {
 		return n, err
 	}
 
-	buf, err := c.decrypt(cipherBuf)
+	buf, err := c.cipher.Decrypt(cipherBuf)
 	if err != nil {
 		return n, err
 	}
@@ -105,30 +92,4 @@ func (c *CipherAesGcmConn) Read(b []byte) (n int, err error) {
 	c.readBuf = c.readBuf[n:]
 
 	return n, nil
-}
-
-func (c *CipherAesGcmConn) encrypt(buf []byte) ([]byte, error) {
-	nonce := make([]byte, c.aesGCM.NonceSize())
-	rand.Read(nonce)
-
-	cipherBuf := c.aesGCM.Seal(nonce, nonce, buf, nil)
-
-	return cipherBuf, nil
-}
-
-func (c *CipherAesGcmConn) decrypt(cipherBuf []byte) ([]byte, error) {
-	nonceSize := c.aesGCM.NonceSize()
-	if len(cipherBuf) < nonceSize {
-		return nil, fmt.Errorf("Bad decryption")
-	}
-
-	nonce := cipherBuf[:nonceSize]
-	cipherBuf = cipherBuf[nonceSize:]
-
-	buf, err := c.aesGCM.Open(nil, nonce, cipherBuf, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, nil
 }

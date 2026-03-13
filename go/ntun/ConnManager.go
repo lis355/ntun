@@ -290,7 +290,7 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 
 	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream accepted connect to %s", m.node.String(), msg.Address))
 
-	outConn, err := net.Dial("tcp", msg.Address)
+	outConn, err := m.dialer.Dial(msg.Address)
 	if err != nil {
 		conn.Close()
 
@@ -328,9 +328,6 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 }
 
 func (m *ConnManager) Dial(dstAddress string) (net.Conn, error) {
-	// DEBUG
-	// return net.Dial("tcp", dstAddress)
-
 	if m.session == nil {
 		return nil, net.ErrClosed
 	}
