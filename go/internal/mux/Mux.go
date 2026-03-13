@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -245,7 +246,7 @@ func (m *Mux) processReadMessage(msgType msgType, msgBuf []byte) error {
 			return m.shutdown(err)
 		}
 
-		// slog.Debug(fmt.Sprintf("%p mux recieve msgStreamConnect id=%s", m, msg.id))
+		slog.Debug(fmt.Sprintf("%p mux recieve msgStreamConnect id=%s", m, msg.id))
 
 		m.mu.Lock()
 		_, ok := m.streams[msg.id]
@@ -269,7 +270,7 @@ func (m *Mux) processReadMessage(msgType msgType, msgBuf []byte) error {
 			return m.shutdown(err)
 		}
 
-		// slog.Debug(fmt.Sprintf("%p mux recieve msgStreamDisconnect id=%s", m, msg.id))
+		slog.Debug(fmt.Sprintf("%p mux recieve msgStreamDisconnect id=%s", m, msg.id))
 
 		m.mu.Lock()
 		stream, ok := m.streams[msg.id]
@@ -345,7 +346,7 @@ func (m *Mux) CreateStream() (net.Conn, error) {
 		return nil, m.shutdown(err)
 	}
 
-	// slog.Debug(fmt.Sprintf("%p mux send msgStreamConnect id=%s", m, stream.id))
+	slog.Debug(fmt.Sprintf("%p mux send msgStreamConnect id=%s", m, stream.id))
 	m.writeMessage(&msgStreamConnect{msgStream{msg{msgTypeStreamConnect}, stream.id}})
 
 	return stream, nil
@@ -433,11 +434,19 @@ func (s *stream) Read(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
+	if len(b) == 0 {
+		return 0, nil
+	}
+
 	if len(s.readBuf) > 0 {
 		n = copy(b, s.readBuf)
 		s.readBuf = s.readBuf[n:]
 
 		return n, nil
+	}
+
+	if s.readCh == nil {
+		return 0, io.EOF
 	}
 
 	buf, ok := <-s.readCh
@@ -458,6 +467,10 @@ func (s *stream) Write(b []byte) (n int, err error) {
 		return 0, fmt.Errorf("write to closed stream")
 	}
 
+	if len(b) == 0 {
+		return 0, nil
+	}
+
 	// slog.Debug(fmt.Sprintf("%p mux send msgTypeStreamData id=%s data=%s", s.mux, s.id, utils.BytesToASCIIHexDumpString(b)))
 	s.mux.writeMessage(&msgStreamData{msgStream{msg{msgTypeStreamData}, s.id}, b})
 
@@ -471,7 +484,7 @@ func (s *stream) Close() error {
 
 	s.mux.doCloseStream(s)
 
-	// slog.Debug(fmt.Sprintf("%p mux send msgStreamDisconnect id=%s", s.mux, s.id))
+	slog.Debug(fmt.Sprintf("%p mux send msgStreamDisconnect id=%s", s.mux, s.id))
 	s.mux.writeMessage(&msgStreamDisconnect{msgStream{msg{msgTypeStreamDisconnect}, s.id}})
 
 	return nil

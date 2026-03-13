@@ -14,6 +14,7 @@ import (
 	"ntun/ntun/transport"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,7 +40,7 @@ func main() {
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
 	clientNode.Start()
 
-	const proxyServerPort = 8082
+	const proxyServerPort = 8081
 	sock5Server := inputs.NewSock5NoAuthServer(clientNode.ConnManager.Dial)
 	err := sock5Server.ListenAndServe(proxyServerPort)
 	if err != nil {
@@ -55,12 +56,17 @@ func main() {
 
 	// Test
 
-	time.Sleep(time.Second)
+	time.Sleep(200 * time.Millisecond)
 
-	const simpleHttpEchoServerPort = 8081
-	var simpleHttpTimeServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
+	const simpleHttpEchoServerPort = 8082
+	var simpleHttpEchoServerRequestUrl = fmt.Sprintf("http://localhost:%d", simpleHttpEchoServerPort)
 	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
 	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
+
+	const simpleHttpsEchoServerPort = 8083
+	var simpleHttpsEchoServerRequestUrl = fmt.Sprintf("https://localhost:%d", simpleHttpsEchoServerPort)
+	simpleHttpsEchoServer := dev.NewSimpleHttpsEchoServer()
+	simpleHttpsEchoServer.ListenAndServe(simpleHttpsEchoServerPort)
 
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
@@ -69,7 +75,7 @@ func main() {
 		panic(err)
 	}
 
-	// testStr := hex.EncodeToString(utils.RandBytes(8))
+	testStr := hex.EncodeToString(utils.RandBytes(8))
 	// result, err := requester.Post(simpleHttpTimeServerRequestUrl, testStr)
 	// if err != nil {
 	// 	panic(err)
@@ -88,14 +94,25 @@ func main() {
 
 	// slog.Info(fmt.Sprintf("Public IP %s", ip))
 
-	for range 15 {
-		ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
-		if err != nil {
-			panic(err)
-		}
+	const n = 5
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for range n {
+		go func() {
+			defer wg.Done()
 
-		_ = ipHttps
+			ipHttps, err := requester.Post(simpleHttpsEchoServerRequestUrl, testStr)
+			// ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+			if err != nil {
+				slog.Error(err.Error())
+			}
+
+			_ = ipHttps
+		}()
 	}
+	wg.Wait()
+
+	select {}
 
 	// if ip != ipHttps {
 	// 	slog.Error(fmt.Sprintf("ip != ipHttps %s %s", ip, ipHttps))
@@ -103,7 +120,7 @@ func main() {
 	// 	return
 	// }
 
-	_ = simpleHttpTimeServerRequestUrl
+	_ = simpleHttpEchoServerRequestUrl
 
 	sock5Server.Close()
 }

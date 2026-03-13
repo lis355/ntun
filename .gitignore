@@ -1,4 +1,6 @@
 __debug*
 cli
 
+.env.*
+
 log.txt

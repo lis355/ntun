@@ -8,9 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"ntun/internal/dev"
+	"ntun/internal/connections"
 	"ntun/ntun"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -78,6 +79,9 @@ func (s *Sock5NoAuthServer) Close() error {
 }
 
 func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
+	// DEBUG CLEAR SCREEN
+	// fmt.Print("\x1b[2J\x1b[1;1H")
+
 	address, err := s.handshakeNoAuth(srcConn)
 	if err != nil {
 		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
@@ -96,9 +100,29 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 		return
 	}
 
-	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 
-	dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("dstConn"), true)
+	// DEBUG
+	// dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("socks"), false)
+
+	// DEBUG
+	protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
+	dstConn = protocolDetectorConn
+
+	var protocolWg sync.WaitGroup
+	protocolWg.Add(1)
+
+	go func() {
+		defer protocolWg.Done()
+
+		protocol := <-protocolDetectorConn.Detected
+		switch pr := protocol.(type) {
+		case *connections.HttpProtocol:
+			slog.Info(fmt.Sprintf("detected %s protocol", pr.Protocol()))
+		case *connections.HttpsProtocol:
+			slog.Info(fmt.Sprintf("detected %s protocol %s", pr.Protocol(), pr.Domain))
+		}
+	}()
 
 	err = ntun.Proxy(srcConn, dstConn)
 	if err != nil {
@@ -107,11 +131,13 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 		return
 	}
 
-	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+	protocolWg.Wait()
+
+	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 }
 
 func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Conn, error) {
-	slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
+	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
 
 	// Connect to target
 	dstConn, err := s.dial(srcConn.RemoteAddr().String(), address)

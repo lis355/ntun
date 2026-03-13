@@ -60,7 +60,7 @@ func HexDump(data []byte) string {
 		fmt.Fprintf(&out, "\n")
 	}
 
-	return out.String()
+	return strings.TrimSpace(out.String())
 }
 
 func ByteToASCIIHexDumpChar(b byte) byte {

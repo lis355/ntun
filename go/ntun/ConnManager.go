@@ -7,9 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"ntun/internal/app"
-	"ntun/internal/connections"
+	"ntun/internal/dev"
 	"ntun/internal/mux"
-	"sync"
 
 	"github.com/google/uuid"
 )
@@ -29,7 +28,8 @@ func NewConnManager(node *Node) *ConnManager {
 }
 
 func (m *ConnManager) Start() error {
-	go m.process()
+	// DEBUG
+	//go m.process()
 
 	return nil
 }
@@ -102,12 +102,12 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 }
 
 func (m *ConnManager) cipherTransportConn() error {
-	cipherAesGcmConn, err := connections.NewCipherAesGcmConn(m.transportConn, []byte(m.node.Config.CipherKey))
-	if err != nil {
-		return err
-	}
+	// cipherAesGcmConn, err := connections.NewCipherAesGcmConn(m.transportConn, []byte(m.node.Config.CipherKey))
+	// if err != nil {
+	// 	return err
+	// }
 
-	m.transportConn = cipherAesGcmConn
+	// m.transportConn = cipherAesGcmConn
 
 	return nil
 }
@@ -216,7 +216,7 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream accepted connect to %s", m.node.String(), msg.Address))
+	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream accepted connect to %s", m.node.String(), msg.Address))
 
 	outConn, err := net.Dial("tcp", msg.Address)
 	if err != nil {
@@ -226,30 +226,33 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 	}
 
 	// DEBUG
-	protocolDetectorConn := connections.NewProtocolDetectorConn(outConn)
-	outConn = protocolDetectorConn
+	conn = dev.NewSnifferHexDumpDebugConn(conn, fmt.Sprintf("direct"), false)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// DEBUG
+	// protocolDetectorConn := connections.NewProtocolDetectorConn(outConn)
+	// outConn = protocolDetectorConn
 
-	go func() {
-		defer wg.Done()
+	// var wg sync.WaitGroup
+	// wg.Add(1)
 
-		protocol := <-protocolDetectorConn.Detected
-		switch pr := protocol.(type) {
-		case *connections.HttpProtocol:
-			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol", m.node.String(), pr.Protocol()))
-		case *connections.HttpsProtocol:
-			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol %s", m.node.String(), pr.Protocol(), pr.Domain))
-		}
-	}()
+	// go func() {
+	// 	defer wg.Done()
+
+	// 	protocol := <-protocolDetectorConn.Detected
+	// 	switch pr := protocol.(type) {
+	// 	case *connections.HttpProtocol:
+	// 		slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol", m.node.String(), pr.Protocol()))
+	// 	case *connections.HttpsProtocol:
+	// 		slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol %s", m.node.String(), pr.Protocol(), pr.Domain))
+	// 	}
+	// }()
 
 	err = Proxy(conn, outConn)
 	if err != nil {
 		return
 	}
 
-	wg.Wait()
+	// wg.Wait()
 }
 
 func (m *ConnManager) Dial(srcAddress, dstAddress string) (net.Conn, error) {
@@ -266,7 +269,7 @@ func (m *ConnManager) Dial(srcAddress, dstAddress string) (net.Conn, error) {
 		return nil, err
 	}
 
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream created %s <--> %s", m.node.String(), srcAddress, dstAddress))
+	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream created %s <--> %s", m.node.String(), srcAddress, dstAddress))
 
 	err = WriteMsg(dstConn, &ConnectMsg{Address: dstAddress})
 	if err != nil {

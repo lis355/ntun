@@ -6,14 +6,20 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 )
 
 type SimpleHttpEchoServer struct {
 	serv *http.Server
+	tls  bool
 }
 
 func NewSimpleHttpEchoServer() *SimpleHttpEchoServer {
 	return &SimpleHttpEchoServer{}
+}
+
+func NewSimpleHttpsEchoServer() *SimpleHttpEchoServer {
+	return &SimpleHttpEchoServer{tls: true}
 }
 
 func (s *SimpleHttpEchoServer) ListenAndServe(port uint16) error {
@@ -43,9 +49,18 @@ func (s *SimpleHttpEchoServer) ListenAndServe(port uint16) error {
 		return err
 	}
 
-	slog.Info(fmt.Sprintf("[SimpleHttpEchoServer]: listening on http://localhost:%d", port))
+	var protocol string
+	if s.tls {
+		protocol = "https"
 
-	go serv.Serve(listener)
+		go serv.ServeTLS(listener, os.Getenv("DEVELOP_HTTPS_TEST_SERVER_CERT"), os.Getenv("DEVELOP_HTTPS_TEST_SERVER_KEY"))
+	} else {
+		protocol = "http"
+
+		go serv.Serve(listener)
+	}
+
+	slog.Info(fmt.Sprintf("[SimpleHttpEchoServer]: listening on %s://localhost:%d", protocol, port))
 
 	return nil
 }

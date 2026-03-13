@@ -15,7 +15,8 @@ import (
 
 type LogHandler struct {
 	slog.Handler
-	l *log.Logger
+	l       *log.Logger
+	logFile *os.File
 }
 
 func (logHandler *LogHandler) Handle(ctx context.Context, r slog.Record) error {
@@ -45,6 +46,13 @@ func (logHandler *LogHandler) Handle(ctx context.Context, r slog.Record) error {
 		attributesString,
 	)
 
+	logHandler.logFile.WriteString(fmt.Sprintf("[%s %s]: %s%s\n",
+		r.Time.Format(time.RFC3339),
+		r.Level.String(),
+		r.Message,
+		attributesString,
+	))
+
 	return nil
 }
 
@@ -63,6 +71,11 @@ func Init() {
 		level = slog.LevelInfo
 	}
 
+	logFile, err := os.OpenFile("log.txt", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		panic(err)
+	}
+
 	slog.SetDefault(
 		slog.New(
 			&LogHandler{
@@ -70,6 +83,9 @@ func Init() {
 					AddSource: true,
 					Level:     level,
 				}),
-				l: log.New(os.Stdout, "", 0),
-			}))
+				l:       log.New(os.Stdout, "", 0),
+				logFile: logFile,
+			},
+		),
+	)
 }

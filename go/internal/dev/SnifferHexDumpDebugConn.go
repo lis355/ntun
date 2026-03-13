@@ -2,6 +2,8 @@ package dev
 
 import (
 	"fmt"
+	"hash/crc32"
+	"log/slog"
 	"net"
 	"ntun/internal/utils"
 	"sync"
@@ -27,10 +29,10 @@ func (s *SnifferHexDumpDebugConn) Read(b []byte) (n int, err error) {
 	n, err = s.Conn.Read(b)
 	if n > 0 {
 		mu.Lock()
-		fmt.Printf("%s r %d bytes\n", s.Prefix, n)
-		// fmt.Printf("%s r %d bytes %s\n", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n]))
+		slog.Debug(fmt.Sprintf("%s r %d bytes [%d]", s.Prefix, n, crc32.ChecksumIEEE(b[:n])))
+		// slog.Debug(fmt.Sprintf("%s r %d bytes %s", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n])))
 		if s.PrintDump {
-			fmt.Println(utils.HexDump(b[:n]))
+			slog.Debug("\n" + utils.HexDump(b[:n]))
 		}
 		mu.Unlock()
 	}
@@ -41,10 +43,10 @@ func (s *SnifferHexDumpDebugConn) Write(b []byte) (n int, err error) {
 	n, err = s.Conn.Write(b)
 	if n > 0 {
 		mu.Lock()
-		fmt.Printf("%s w %d bytes\n", s.Prefix, n)
-		// fmt.Printf("%s w %d bytes %s\n", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n]))
+		slog.Debug(fmt.Sprintf("%s w %d bytes [%d]", s.Prefix, n, crc32.ChecksumIEEE(b[:n])))
+		// slog.Debug(fmt.Sprintf("%s w %d bytes %s", s.Prefix, n, utils.BytesToASCIIHexDumpString(b[:n])))
 		if s.PrintDump {
-			fmt.Println(utils.HexDump(b[:n]))
+			slog.Debug("\n" + utils.HexDump(b[:n]))
 		}
 		mu.Unlock()
 	}
