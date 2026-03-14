@@ -2,15 +2,20 @@ package yandex
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"io"
-	"log"
+	"log/slog"
+	"mime/quotedprintable"
+	"ntun/internal/log"
 	"ntun/internal/utils"
 	"ntun/ntun/cipher"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/google/uuid"
 	"github.com/wneessen/go-mail"
 )
 
@@ -23,9 +28,12 @@ const (
 )
 
 type YandexMailService struct {
+	lock            sync.Mutex
 	client          *imapclient.Client
+	idleCmd         *imapclient.IdleCommand
 	email, password string
 	cipher          *cipher.CipherAesGcm
+	newMailCh       chan struct{}
 
 	Mails chan []byte
 }
@@ -37,22 +45,21 @@ func NewYandexMailService(email, password, cipherKey string) (*YandexMailService
 	}
 
 	return &YandexMailService{
-		email:    email,
-		password: password,
-		cipher:   cipher,
-		Mails:    make(chan []byte),
+		email:     email,
+		password:  password,
+		cipher:    cipher,
+		newMailCh: make(chan struct{}, 1),
+		Mails:     make(chan []byte),
 	}, nil
 }
 
 func (s *YandexMailService) Listen() error {
-	newMail := make(chan struct{}, 1)
-
 	opts := &imapclient.Options{
 		UnilateralDataHandler: &imapclient.UnilateralDataHandler{
 			Mailbox: func(data *imapclient.UnilateralDataMailbox) {
 				if data.NumMessages != nil {
 					select {
-					case newMail <- struct{}{}:
+					case s.newMailCh <- struct{}{}:
 					default:
 					}
 				}
@@ -65,15 +72,21 @@ func (s *YandexMailService) Listen() error {
 		return err
 	}
 
+	go s.handleClient(client)
+
+	return nil
+}
+
+func (s *YandexMailService) handleClient(client *imapclient.Client) error {
 	s.client = client
 
-	defer client.Close()
+	defer s.Close()
 
-	if err := client.Login(s.email, s.password).Wait(); err != nil {
+	if err := s.client.Login(s.email, s.password).Wait(); err != nil {
 		return err
 	}
 
-	_, err = client.Select("INBOX", nil).Wait()
+	_, err := s.client.Select("INBOX", nil).Wait()
 	if err != nil {
 		return err
 	}
@@ -83,21 +96,21 @@ func (s *YandexMailService) Listen() error {
 	}
 
 	for {
-		idleCmd, err := client.Idle()
+		s.idleCmd, err = s.client.Idle()
 		if err != nil {
 			return err
 		}
-		defer idleCmd.Close()
+		defer s.Close()
 
 		idleDone := make(chan error, 1)
 
 		go func() {
-			idleDone <- idleCmd.Wait()
+			idleDone <- s.idleCmd.Wait()
 		}()
 
 		select {
-		case <-newMail:
-			if err := idleCmd.Close(); err != nil {
+		case <-s.newMailCh:
+			if err := s.idleCmd.Close(); err != nil {
 				return err
 			}
 
@@ -115,7 +128,7 @@ func (s *YandexMailService) Listen() error {
 			}
 
 		case <-time.After(25 * time.Minute):
-			if err := idleCmd.Close(); err != nil {
+			if err := s.idleCmd.Close(); err != nil {
 				return err
 			}
 
@@ -124,6 +137,25 @@ func (s *YandexMailService) Listen() error {
 			}
 		}
 	}
+}
+
+func (s *YandexMailService) Close() error {
+	s.lock.Lock()
+	if s.client == nil {
+		s.lock.Unlock()
+
+		return errors.New("already closed")
+	}
+
+	if s.idleCmd != nil {
+		s.idleCmd.Close()
+	}
+
+	err := s.client.Close()
+	s.client = nil
+	s.lock.Unlock()
+
+	return err
 }
 
 func (s *YandexMailService) process() error {
@@ -159,6 +191,9 @@ func (s *YandexMailService) process() error {
 			break
 		}
 
+		var subj string
+		var body []byte
+
 		for {
 			item := msg.Next()
 			if item == nil {
@@ -167,27 +202,32 @@ func (s *YandexMailService) process() error {
 
 			switch item := item.(type) {
 			case imapclient.FetchItemDataEnvelope:
-				log.Printf("Тема письма: %s", item.Envelope.Subject)
+				subj = item.Envelope.Subject
+				// slog.Debug(fmt.Sprintf("%s: subject %s", log.ObjName(s), item.Envelope.Subject))
 
 			case imapclient.FetchItemDataBodySection:
-				bodyBytes, err := io.ReadAll(item.Literal)
+				bodyBytes, err := io.ReadAll(quotedprintable.NewReader(item.Literal))
 				if err != nil {
-					log.Printf("Ошибка чтения тела: %v", err)
+					slog.Debug(fmt.Sprintf("%s: error reading msg body %v", log.ObjName(s), err))
+
 					continue
 				}
 
-				bodyBytes, err = s.decodeMessage(strings.TrimSpace(string(bodyBytes)))
+				// slog.Debug(fmt.Sprintf("%s: rcv body %s", log.ObjName(s), bodyBytes))
+
+				body, err = s.decodeMessage(string(bodyBytes))
 				if err != nil {
-					log.Printf("Ошибка чтения тела: %v", err)
+					slog.Debug(fmt.Sprintf("%s: error decoding msg body %v", log.ObjName(s), err))
+
 					continue
 				}
-
-				log.Printf("Тело: %s", string(bodyBytes))
-				s.Mails <- bodyBytes
 			}
 		}
 
-		log.Println("delete msg")
+		slog.Debug(fmt.Sprintf("%s: recieve mail %s %d bytes", log.ObjName(s), subj, len(body)))
+
+		s.Mails <- body
+
 		storeCmd := s.client.Store(seqSet, &imap.StoreFlags{
 			Op:    imap.StoreFlagsAdd,
 			Flags: []imap.Flag{imap.FlagDeleted},
@@ -220,15 +260,17 @@ func (s *YandexMailService) SendMail(buf []byte) error {
 		return err
 	}
 
-	msg.Subject(mailSubject)
+	subj := fmt.Sprintf("%s_%s", mailSubject, uuid.New())
+	msg.Subject(subj)
 
 	body, err := s.encodeMessage(buf)
 	if err != nil {
 		return err
 	}
 
-	msg.SetBodyString(mail.TypeTextPlain, body)
-	msg.SetDate()
+	// slog.Debug(fmt.Sprintf("%s: snd body %s", log.ObjName(s), body))
+
+	msg.SetBodyString(mail.TypeAppOctetStream, body)
 
 	client, err := mail.NewClient(smtpServer,
 		mail.WithPort(smtpPort),
@@ -244,6 +286,8 @@ func (s *YandexMailService) SendMail(buf []byte) error {
 	if err != nil {
 		return err
 	}
+
+	slog.Debug(fmt.Sprintf("%s: sent mail %s %d bytes", log.ObjName(s), subj, len(buf)))
 
 	return nil
 }
@@ -289,8 +333,4 @@ func (s *YandexMailService) encodeMessage(msg []byte) (string, error) {
 
 func (s *YandexMailService) decodeMessage(msg string) ([]byte, error) {
 	return GZipCipherBase64Decode(s.cipher, msg)
-}
-
-func main() {
-
 }

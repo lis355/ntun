@@ -13,6 +13,7 @@ import (
 	"ntun/ntun"
 	"ntun/ntun/connections/inputs"
 	"ntun/ntun/transport"
+	"ntun/ntun/transport/yandex"
 	"os"
 	"runtime"
 	"strconv"
@@ -81,27 +82,6 @@ func main() {
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	// yandexMailManager, err := yandex.NewYandexMailService(os.Getenv("DEVELOP_YANDEX_MAIL_USER"), os.Getenv("DEVELOP_YANDEX_MAIL_PASSWORD"), cipherKey)
-	// go yandexMailManager.Listen()
-
-	// time.Sleep(3 * time.Second)
-
-	// go func() {
-	// 	for msg := range yandexMailManager.Mails {
-	// 		slog.Info("yandexMailManager.Mails", string(msg))
-	// 	}
-	// }()
-
-	// time.Sleep(3 * time.Second)
-
-	// for range 2 {
-	// 	yandexMailManager.SendMail([]byte(time.Now().Format(time.RFC3339)))
-
-	// 	time.Sleep(30 * time.Second)
-	// }
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
 	tr1 := transport.NewWebRTCTransport()
 	tr2 := transport.NewWebRTCTransport()
 
@@ -110,66 +90,75 @@ func main() {
 		panic(err)
 	}
 
-	// offerBufMsg, err := GZipCipherBase64Encode(cipher, offerBuf)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// slog.Debug(fmt.Sprintf("GZipCipherBase64Encode: %d / %d bytes", len(offerBufMsg), len(offerBuf)))
-
-	// offerBuf, err = GZipCipherBase64Decode(cipher, offerBufMsg)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	answerBuf, err := tr2.CreateAnswer(offerBuf)
-	if err != nil {
+	yandexMailManager, err := yandex.NewYandexMailService(os.Getenv("DEVELOP_YANDEX_MAIL_USER"), os.Getenv("DEVELOP_YANDEX_MAIL_PASSWORD"), cipherKey)
+	if err := yandexMailManager.Listen(); err != nil {
 		panic(err)
 	}
 
-	err = tr1.SetAnswer(answerBuf)
-	if err != nil {
+	// if err := yandexMailManager.Close(); err != nil {
+	// 	panic(err)
+	// }
+
+	if err := yandexMailManager.SendMail(offerBuf); err != nil {
 		panic(err)
 	}
 
-	// var wg sync.WaitGroup
-	// wg.Add(2)
+	go func() {
+		for msg := range yandexMailManager.Mails {
+			offerBuf = msg
 
-	// go func() {
-	// 	defer wg.Done()
+			answerBuf, err := tr2.CreateAnswer(offerBuf)
+			if err != nil {
+				panic(err)
+			}
 
-	// 	connA, err := tr1.Transport()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
+			err = tr1.SetAnswer(answerBuf)
+			if err != nil {
+				panic(err)
+			}
 
-	// 	connA.Write([]byte(cipherKey))
-	// 	slog.Debug(fmt.Sprintf("connA.Write: %s", cipherKey))
-	// }()
+			// var wg sync.WaitGroup
+			// wg.Add(2)
 
-	// var connB net.Conn
-	// go func() {
-	// 	defer wg.Done()
+			// go func() {
+			// 	defer wg.Done()
 
-	// 	connB, err = tr2.Transport()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
+			// 	connA, err := tr1.Transport()
+			// 	if err != nil {
+			// 		panic(err)
+			// 	}
 
-	// 	buf := make([]byte, 32)
-	// 	for {
-	// 		n, err := connB.Read(buf)
-	// 		if err != nil {
-	// 			return
-	// 		}
-	// 		slog.Debug(fmt.Sprintf("connB.Read: %s", buf[:n]))
-	// 		connB.Close()
-	// 	}
-	// }()
+			// 	connA.Write([]byte(cipherKey))
+			// 	slog.Debug(fmt.Sprintf("connA.Write: %s", cipherKey))
+			// }()
 
-	// wg.Wait()
+			// var connB net.Conn
+			// go func() {
+			// 	defer wg.Done()
 
-	// connB.Close()
+			// 	connB, err = tr2.Transport()
+			// 	if err != nil {
+			// 		panic(err)
+			// 	}
+
+			// 	buf := make([]byte, 32)
+			// 	for {
+			// 		n, err := connB.Read(buf)
+			// 		if err != nil {
+			// 			return
+			// 		}
+			// 		slog.Debug(fmt.Sprintf("connB.Read: %s", buf[:n]))
+			// 		connB.Close()
+			// 	}
+			// }()
+
+			// wg.Wait()
+
+			// connB.Close()
+		}
+	}()
+
+	time.Sleep(20 * time.Second)
 
 	// Client
 
