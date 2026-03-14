@@ -4,17 +4,21 @@ import hash from "./hash.js";
 
 import info from "../../package.json" with { type: "json" };
 
-const chipherKey = crypto.createHash("sha256").update(hash(info)).digest();
+function createChipherKeyFromString(str) {
+	return crypto.createHash("sha256").update(str).digest();
+}
 
-function encrypt(buffer) {
+const DEFAULT_CIPHER_KEY = createChipherKeyFromString(hash(info));
+
+function encrypt(buffer, cipherKey = DEFAULT_CIPHER_KEY) {
 	const iv = crypto.randomBytes(12);
-	const cipher = crypto.createCipheriv("aes-256-gcm", chipherKey, iv);
+	const cipher = crypto.createCipheriv("aes-256-gcm", cipherKey, iv);
 	const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
 	const authTag = cipher.getAuthTag();
 	return Buffer.concat([iv, authTag, encrypted]);
 }
 
-function decrypt(encryptedBuffer) {
+function decrypt(encryptedBuffer, chipherKey = DEFAULT_CIPHER_KEY) {
 	const iv = encryptedBuffer.subarray(0, 12);
 	const authTag = encryptedBuffer.subarray(12, 28);
 	const data = encryptedBuffer.subarray(28);
@@ -24,6 +28,7 @@ function decrypt(encryptedBuffer) {
 }
 
 export default {
+	createChipherKeyFromString,
 	encrypt,
 	decrypt
 };
