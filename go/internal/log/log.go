@@ -89,3 +89,7 @@ func Init() {
 		),
 	)
 }
+
+func ObjName(v any) string {
+	return fmt.Sprintf("[%T:%p]", v, v)
+}

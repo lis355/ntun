@@ -119,12 +119,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	// 	}
 	// }()
 
-	err = ntun.Proxy(srcConn, dstConn)
-	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] proxy connection error: %v", err))
-
-		return
-	}
+	ntun.Proxy(srcConn, dstConn)
 
 	// protocolWg.Wait()
 

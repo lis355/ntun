@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"ntun/internal/log"
 	"sync"
 	"time"
 
@@ -57,9 +58,9 @@ func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
 
 	w.peer = peer
 
-	w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
-		slog.Debug(fmt.Sprintf("[WebRTCTransport]: %p ICEConnectionState %s", w, s))
-	})
+	// w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+	// 	slog.Debug(fmt.Sprintf("%s: ICEConnectionState %s", log.ObjName(w), s))
+	// })
 
 	w.peer.OnDataChannel(w.handleDataChannel)
 
@@ -92,7 +93,8 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil &&
 			c.Typ == webrtc.ICECandidateTypeRelay {
-			slog.Debug(fmt.Sprintf("[WebRTCTransport]: %p ICECandidate %s", w, c.String()))
+			// slog.Debug(fmt.Sprintf("%s: ICECandidate %s", log.ObjName(w), c.String()))
+
 			if candidate == nil {
 				candidateInit := c.ToJSON()
 				candidate = &candidateInit
@@ -202,6 +204,8 @@ func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 				}
 				w.dcWriteCh = make(chan []byte)
 				w.transportCh <- struct{}{}
+
+				slog.Debug(fmt.Sprintf("%s: connected via %s", log.ObjName(w), w.iceServer.URLs[0]))
 			case _, ok := <-w.dcCloseCh:
 				if !ok {
 					w.dcCloseCh = nil
@@ -225,6 +229,8 @@ func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 				w.dc.OnMessage(nil)
 
 				w.dc = nil
+
+				slog.Debug(fmt.Sprintf("%s: disconnected", log.ObjName(w)))
 
 				return
 			}

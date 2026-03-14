@@ -1,8 +1,10 @@
 package ntun
 
 import (
+	"fmt"
 	"log/slog"
 	"ntun/internal/conf"
+	"ntun/internal/log"
 	"ntun/ntun/connections/outputs"
 	"ntun/ntun/transport"
 
@@ -27,9 +29,8 @@ func NewNode(config *conf.Config, transporter transport.Transporter) *Node {
 }
 
 func (n *Node) String() string {
-	//DEBUG
-	// return fmt.Sprintf("%s [%s]", n.Config.Id.String(), n.Config.Name)
-	return n.Config.Name
+	return fmt.Sprintf("%s [%s]", n.Config.Id, n.Config.Name)
+	// return n.Config.Name
 }
 
 func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
@@ -43,8 +44,8 @@ func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
 }
 
 func (n *Node) Start() error {
-	slog.Debug("[Node] starting")
-	defer slog.Debug("[Node] started")
+	slog.Debug(fmt.Sprintf("%s: starting", log.ObjName(n)))
+	defer slog.Debug(fmt.Sprintf("%s: started", log.ObjName(n)))
 
 	err := n.ConnManager.Start()
 	if err != nil {
@@ -60,8 +61,8 @@ func (n *Node) Start() error {
 }
 
 func (n *Node) Stop() error {
-	slog.Debug("[Node] stopping")
-	defer slog.Debug("[Node] stopped")
+	slog.Debug(fmt.Sprintf("%s: stopping", log.ObjName(n)))
+	defer slog.Debug(fmt.Sprintf("%s: stopped", log.ObjName(n)))
 
 	err := n.ConnManager.Stop()
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"ntun/internal/app"
 	"ntun/internal/connections"
+	"ntun/internal/log"
 	ntunConnections "ntun/ntun/connections"
 	"ntun/ntun/transport"
 	"sync"
@@ -73,7 +74,7 @@ func (m *ConnManager) process() {
 		}
 
 		if !m.wasConnected {
-			slog.Warn(fmt.Sprintf("[%s:ConnManager] can't get transport, waiting", m.node.String()))
+			slog.Warn(fmt.Sprintf("%s: can't get transport, waiting", log.ObjName(m)))
 
 			time.Sleep(3 * time.Second)
 		}
@@ -94,11 +95,11 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 		return
 	}
 
-	// m.transportConn = dev.NewSnifferHexDumpDebugConn(m.transportConn, fmt.Sprintf("[%s:ConnManager:transportConn]", m.node.String()), false)
+	// m.transportConn = dev.NewSnifferHexDumpDebugConn(m.transportConn, fmt.Sprintf("[%s:ConnManager:transportConn]", log.ObjName(m)), false)
 
 	err = m.doTransportHandshake()
 	if err != nil {
-		slog.Warn(fmt.Sprintf("[%s:ConnManager] bad hs connection %s %v", m.node.String(), transportConn.RemoteAddr().String(), err))
+		slog.Warn(fmt.Sprintf("%s: bad hs connection %s %v", log.ObjName(m), transportConn.RemoteAddr().String(), err))
 
 		m.clear()
 
@@ -123,7 +124,7 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 
 	m.wasConnected = true
 
-	slog.Info(fmt.Sprintf("[%s:ConnManager] node %s connected", m.node.String(), m.inHs.Id.String()))
+	slog.Info(fmt.Sprintf("%s: node %s connected", log.ObjName(m), m.inHs.Id.String()))
 
 	m.session = session
 
@@ -144,7 +145,7 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 		conn, err := m.session.Accept()
 		// conn, err := muxListener.Accept()
 		if err != nil {
-			slog.Info(fmt.Sprintf("[%s:ConnManager] node %s disconnected %v", m.node.String(), m.inHs.Id.String(), err))
+			slog.Info(fmt.Sprintf("%s: node %s disconnected %v", log.ObjName(m), m.inHs.Id.String(), err))
 
 			m.clear()
 
@@ -243,13 +244,13 @@ func (m *ConnManager) doTransportHandshake() error {
 	m.outHs = &TransportHandshake{Version: app.Version, Id: m.node.Config.Id}
 
 	err := WriteMsg(m.transportConn, m.outHs)
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] written transport hs %+v", m.node.String(), m.outHs))
+	slog.Debug(fmt.Sprintf("%s: written transport hs %+v", log.ObjName(m), m.outHs))
 	if err != nil {
 		return err
 	}
 
 	err = ReadMsg(m.transportConn, &m.inHs)
-	slog.Debug(fmt.Sprintf("[%s:ConnManager] readed transport hs %+v", m.node.String(), m.inHs))
+	slog.Debug(fmt.Sprintf("%s: readed transport hs %+v", log.ObjName(m), m.inHs))
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,7 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
-	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream accepted connect to %s", m.node.String(), msg.Address))
+	// slog.Debug(fmt.Sprintf("%s: mux stream accepted connect to %s", log.ObjName(m), msg.Address))
 
 	outConn, err := m.dialer.Dial(msg.Address)
 	if err != nil {
@@ -313,16 +314,13 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 		protocol := <-protocolDetectorConn.Detected
 		switch pr := protocol.(type) {
 		case *connections.HttpProtocol:
-			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol", m.node.String(), pr.Protocol()))
+			slog.Info(fmt.Sprintf("%s: detected %s protocol", log.ObjName(m), pr.Protocol()))
 		case *connections.HttpsProtocol:
-			slog.Info(fmt.Sprintf("[%s:ConnManager] detected %s protocol %s", m.node.String(), pr.Protocol(), pr.Domain))
+			slog.Info(fmt.Sprintf("%s: detected %s protocol %s", log.ObjName(m), pr.Protocol(), pr.Domain))
 		}
 	}()
 
-	err = Proxy(conn, outConn)
-	if err != nil {
-		return
-	}
+	Proxy(conn, outConn)
 
 	wg.Wait()
 }
@@ -347,7 +345,7 @@ func (m *ConnManager) Dial(dstAddress string) (net.Conn, error) {
 	// 	return nil, err
 	// }
 
-	// slog.Debug(fmt.Sprintf("[%s:ConnManager] mux stream created %s <--> %s", m.node.String(), srcAddress, dstAddress))
+	// slog.Debug(fmt.Sprintf("%s: mux stream created %s <--> %s", log.ObjName(m), srcAddress, dstAddress))
 
 	err = WriteMsg(dstConn, &ConnectMsg{Address: dstAddress})
 	if err != nil {

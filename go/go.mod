@@ -14,6 +14,8 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/emersion/go-message v0.18.2 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/pion/datachannel v1.5.8 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
 	github.com/pion/ice/v2 v2.3.38 // indirect
@@ -34,11 +36,15 @@ require (
 	github.com/wlynxg/anet v0.0.3 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
 	github.com/libp2p/go-yamux v1.4.1 // indirect
 	github.com/pion/webrtc/v3 v3.3.6
+	github.com/wneessen/go-mail v0.7.2
 )

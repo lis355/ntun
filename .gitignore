@@ -1,5 +1,6 @@
 __debug*
 cli
+.cache/
 
 .env.*
 

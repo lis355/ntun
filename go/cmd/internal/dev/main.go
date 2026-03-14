@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"ntun/internal/log"
 	"ntun/internal/utils"
 	"ntun/ntun"
-	"ntun/ntun/cipher"
 	"ntun/ntun/connections/inputs"
 	"ntun/ntun/transport"
 	"os"
@@ -22,42 +20,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
+	"go.yaml.in/yaml/v3"
 )
-
-func GZipCipherBase64Encode(cipher *cipher.CipherAesGcm, buf []byte) (string, error) {
-	compressedBuf, err := utils.GZipEncode(buf)
-	if err != nil {
-		return "", err
-	}
-
-	encryptedBuf, err := cipher.Encrypt(compressedBuf)
-	if err != nil {
-		return "", err
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(encryptedBuf)
-
-	return encoded, nil
-}
-
-func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded string) ([]byte, error) {
-	encryptedBuf, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, err
-	}
-
-	compressedBuf, err := cipher.Decrypt(encryptedBuf)
-	if err != nil {
-		return nil, err
-	}
-
-	buf, err := utils.GZipDecode(compressedBuf)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, nil
-}
 
 func main() {
 	app.Init()
@@ -70,33 +34,93 @@ func main() {
 	clientId, serverId := uuid.New(), uuid.New()
 	cipherKey := hex.EncodeToString(utils.RandBytes(8))
 
-	var turnServers []webrtc.ICEServer
-	json.Unmarshal([]byte(os.Getenv("DEVELOP_WEB_RTC_SERVERS")), &turnServers)
+	/////////////////////
+
+	var iceServers []webrtc.ICEServer
+
+	type IceServersCache struct {
+		Time       time.Time
+		IceServers []webrtc.ICEServer
+	}
+
+	iceServersCacheBuf, err := app.ReadCacheFile("iceServers.yaml")
+	if err != nil {
+		panic(err)
+	}
+
+	var iceServersCache IceServersCache
+	if err := yaml.Unmarshal(iceServersCacheBuf, &iceServersCache); err != nil {
+		panic(err)
+	}
+
+	if time.Since(iceServersCache.Time) < 24*time.Hour {
+		iceServers = iceServersCache.IceServers
+	} else {
+		// iceServer, err := yandex.GetIceServerFromJoinIdOrLink(os.Getenv("DEVELOP_YANDEX_TELEMOST_JOIN_ID_OR_LINK"))
+		// slog.Info(fmt.Sprintf("GetIceServerFromJoinIdOrLink %+v", iceServer))
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// iceServers := []webrtc.ICEServer{*iceServer}
+		// iceServersJson, _ := json.Marshal(&iceServers)
+		// slog.Info(fmt.Sprintf("DEVELOP_WEB_RTC_SERVERS=%s", iceServersJson))
+
+		json.Unmarshal([]byte(os.Getenv("DEVELOP_WEB_RTC_SERVERS")), &iceServers)
+
+		iceServersCache := &IceServersCache{Time: time.Now(), IceServers: iceServers}
+		iceServersCacheBuf, err := yaml.Marshal(&iceServersCache)
+
+		err = app.WriteCacheFile("iceServers.yaml", iceServersCacheBuf)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	iceServer := &iceServers[0]
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// yandexMailManager, err := yandex.NewYandexMailService(os.Getenv("DEVELOP_YANDEX_MAIL_USER"), os.Getenv("DEVELOP_YANDEX_MAIL_PASSWORD"), cipherKey)
+	// go yandexMailManager.Listen()
+
+	// time.Sleep(3 * time.Second)
+
+	// go func() {
+	// 	for msg := range yandexMailManager.Mails {
+	// 		slog.Info("yandexMailManager.Mails", string(msg))
+	// 	}
+	// }()
+
+	// time.Sleep(3 * time.Second)
+
+	// for range 2 {
+	// 	yandexMailManager.SendMail([]byte(time.Now().Format(time.RFC3339)))
+
+	// 	time.Sleep(30 * time.Second)
+	// }
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	tr1 := transport.NewWebRTCTransport()
 	tr2 := transport.NewWebRTCTransport()
 
-	offerBuf, err := tr1.CreateOffer(&turnServers[0])
+	offerBuf, err := tr1.CreateOffer(iceServer)
 	if err != nil {
 		panic(err)
 	}
 
-	cipher, err := cipher.NewCipherAesGcm([]byte(cipherKey))
-	if err != nil {
-		panic(err)
-	}
+	// offerBufMsg, err := GZipCipherBase64Encode(cipher, offerBuf)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	offerBufMsg, err := GZipCipherBase64Encode(cipher, offerBuf)
-	if err != nil {
-		panic(err)
-	}
+	// slog.Debug(fmt.Sprintf("GZipCipherBase64Encode: %d / %d bytes", len(offerBufMsg), len(offerBuf)))
 
-	slog.Debug(fmt.Sprintf("GZipCipherBase64Encode: %d / %d bytes", len(offerBufMsg), len(offerBuf)))
-
-	offerBuf, err = GZipCipherBase64Decode(cipher, offerBufMsg)
-	if err != nil {
-		panic(err)
-	}
+	// offerBuf, err = GZipCipherBase64Decode(cipher, offerBufMsg)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	answerBuf, err := tr2.CreateAnswer(offerBuf)
 	if err != nil {
