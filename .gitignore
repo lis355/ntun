@@ -1,16 +1,7 @@
-node_modules/
-yarn.lock
-
-build/
-buildfiles/
-dist/
-temp/
-tmp/
-out/
-dumps/
-configs/
+__debug*
+cli
+.cache/
 
 .env.*
-userData/
 
 log.txt
