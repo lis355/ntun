@@ -36,7 +36,7 @@ func PrintLogo() {
 func CacheDir() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 
 	cacheDir := filepath.Join(cwd, ".cache")

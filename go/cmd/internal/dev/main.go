@@ -12,8 +12,8 @@ import (
 	"ntun/internal/utils"
 	"ntun/ntun"
 	"ntun/ntun/connections/inputs"
+	"ntun/ntun/messages/yandex"
 	"ntun/ntun/transport"
-	"ntun/ntun/transport/yandex"
 	"os"
 	"runtime"
 	"strconv"
@@ -99,12 +99,17 @@ func main() {
 	// 	panic(err)
 	// }
 
-	if err := yandexMailManager.SendMail(offerBuf); err != nil {
+	if err := yandexMailManager.SendMessage(offerBuf); err != nil {
 		panic(err)
 	}
 
 	go func() {
-		for msg := range yandexMailManager.Mails {
+		for {
+			msg, err := yandexMailManager.RecieveMessage()
+			if err != nil {
+				panic(err)
+			}
+
 			offerBuf = msg
 
 			answerBuf, err := tr2.CreateAnswer(offerBuf)

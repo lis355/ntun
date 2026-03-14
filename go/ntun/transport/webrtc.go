@@ -41,6 +41,7 @@ func NewWebRTCTransport() *WebRTCTransport {
 
 func (w *WebRTCTransport) Transport() (net.Conn, error) {
 	<-w.transportCh
+
 	return w.wconn, nil
 }
 

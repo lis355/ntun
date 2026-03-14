@@ -2,7 +2,10 @@ package conf
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
@@ -25,14 +28,77 @@ type InputSocks5 struct {
 type OutputDirect struct {
 }
 
+type Rate struct {
+	Value uint32
+}
+
+func (r *Rate) UnmarshalYAML(value *yaml.Node) error {
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return err
+	}
+
+	val, err := parseRateLimit(s)
+	if err != nil {
+		return err
+	}
+
+	r.Value = val
+
+	return nil
+}
+
+func parseRateLimit(s string) (uint32, error) {
+	s = strings.TrimSpace(s)
+
+	if s == "" {
+		return 0, nil
+	}
+
+	if !strings.HasSuffix(s, "ps") {
+		return 0, fmt.Errorf("bad rate format %s", s)
+	}
+	s = strings.TrimSuffix(s, "ps")
+
+	byteNames := []string{"b", "kb", "mb", "gb"}
+	hasByteName := false
+	i := len(byteNames) - 1
+	for ; i >= 0; i-- {
+		if strings.HasSuffix(s, byteNames[i]) {
+			s = strings.TrimSuffix(s, byteNames[i])
+			hasByteName = true
+			break
+		}
+	}
+	if !hasByteName {
+		return 0, fmt.Errorf("bad rate format %s", s)
+	}
+
+	val, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("bad rate format %s", s)
+	}
+
+	return uint32(val * int(math.Pow(1024, float64(i)))), nil
+}
+
+// TODO изучить встроенные структуры и их парсинг
+// type Transport struct {
+// Host      string `yaml:"host"`
+// Port      uint16 `yaml:"port"`
+// RateLimit Rate   `yaml:"rateLimit"`
+// }
+
 type TransportTcpClient struct {
-	Host string `yaml:"host"`
-	Port uint16 `yaml:"port"`
+	Host      string `yaml:"host"`
+	Port      uint16 `yaml:"port"`
+	RateLimit Rate   `yaml:"rateLimit"`
 }
 
 type TransportTcpServer struct {
-	Host string `yaml:"host"`
-	Port uint16 `yaml:"port"`
+	Host      string `yaml:"host"`
+	Port      uint16 `yaml:"port"`
+	RateLimit Rate   `yaml:"rateLimit"`
 }
 
 func (c *Config) ParseFile(filePath string) error {

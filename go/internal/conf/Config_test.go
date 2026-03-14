@@ -45,8 +45,9 @@ func TestConfig(t *testing.T) {
 					Port: 8080,
 				},
 				Transport: &TransportTcpClient{
-					Host: "localhost",
-					Port: 8303,
+					Host:      "localhost",
+					Port:      8303,
+					RateLimit: Rate{50 * 1024 * 1024},
 				},
 			},
 		},
@@ -72,8 +73,9 @@ func TestConfig(t *testing.T) {
 				CipherKey: "123",
 				Output:    &OutputDirect{},
 				Transport: &TransportTcpServer{
-					Host: "localhost",
-					Port: 8303,
+					Host:      "localhost",
+					Port:      8303,
+					RateLimit: Rate{50 * 1024 * 1024},
 				},
 			},
 		},

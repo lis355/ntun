@@ -34,8 +34,7 @@ type YandexMailService struct {
 	email, password string
 	cipher          *cipher.CipherAesGcm
 	newMailCh       chan struct{}
-
-	Mails chan []byte
+	mailCh          chan []byte
 }
 
 func NewYandexMailService(email, password, cipherKey string) (*YandexMailService, error) {
@@ -49,7 +48,7 @@ func NewYandexMailService(email, password, cipherKey string) (*YandexMailService
 		password:  password,
 		cipher:    cipher,
 		newMailCh: make(chan struct{}, 1),
-		Mails:     make(chan []byte),
+		mailCh:    make(chan []byte),
 	}, nil
 }
 
@@ -155,6 +154,9 @@ func (s *YandexMailService) Close() error {
 	s.client = nil
 	s.lock.Unlock()
 
+	close(s.newMailCh)
+	close(s.mailCh)
+
 	return err
 }
 
@@ -206,18 +208,9 @@ func (s *YandexMailService) process() error {
 				// slog.Debug(fmt.Sprintf("%s: subject %s", log.ObjName(s), item.Envelope.Subject))
 
 			case imapclient.FetchItemDataBodySection:
-				bodyBytes, err := io.ReadAll(quotedprintable.NewReader(item.Literal))
+				body, err = io.ReadAll(quotedprintable.NewReader(item.Literal))
 				if err != nil {
 					slog.Debug(fmt.Sprintf("%s: error reading msg body %v", log.ObjName(s), err))
-
-					continue
-				}
-
-				// slog.Debug(fmt.Sprintf("%s: rcv body %s", log.ObjName(s), bodyBytes))
-
-				body, err = s.decodeMessage(string(bodyBytes))
-				if err != nil {
-					slog.Debug(fmt.Sprintf("%s: error decoding msg body %v", log.ObjName(s), err))
 
 					continue
 				}
@@ -226,7 +219,7 @@ func (s *YandexMailService) process() error {
 
 		slog.Debug(fmt.Sprintf("%s: recieve mail %s %d bytes", log.ObjName(s), subj, len(body)))
 
-		s.Mails <- body
+		s.mailCh <- body
 
 		storeCmd := s.client.Store(seqSet, &imap.StoreFlags{
 			Op:    imap.StoreFlagsAdd,
@@ -249,7 +242,7 @@ func (s *YandexMailService) process() error {
 	return nil
 }
 
-func (s *YandexMailService) SendMail(buf []byte) error {
+func (s *YandexMailService) sendSmtpMail(content string) error {
 	msg := mail.NewMsg()
 
 	if err := msg.From(s.email); err != nil {
@@ -263,14 +256,7 @@ func (s *YandexMailService) SendMail(buf []byte) error {
 	subj := fmt.Sprintf("%s_%s", mailSubject, uuid.New())
 	msg.Subject(subj)
 
-	body, err := s.encodeMessage(buf)
-	if err != nil {
-		return err
-	}
-
-	// slog.Debug(fmt.Sprintf("%s: snd body %s", log.ObjName(s), body))
-
-	msg.SetBodyString(mail.TypeAppOctetStream, body)
+	msg.SetBodyString(mail.TypeTextPlain, content)
 
 	client, err := mail.NewClient(smtpServer,
 		mail.WithPort(smtpPort),
@@ -287,32 +273,37 @@ func (s *YandexMailService) SendMail(buf []byte) error {
 		return err
 	}
 
-	slog.Debug(fmt.Sprintf("%s: sent mail %s %d bytes", log.ObjName(s), subj, len(buf)))
+	slog.Debug(fmt.Sprintf("%s: sent mail %s %d bytes", log.ObjName(s), subj, len(content)))
 
 	return nil
 }
 
-func GZipCipherBase64Encode(cipher *cipher.CipherAesGcm, buf []byte) (string, error) {
+func GZipCipherBase64Encode(cipher *cipher.CipherAesGcm, buf []byte) ([]byte, error) {
 	compressedBuf, err := utils.GZipEncode(buf)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	encryptedBuf, err := cipher.Encrypt(compressedBuf)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(encryptedBuf)
+	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(encryptedBuf)))
+
+	base64.StdEncoding.Encode(encoded, encryptedBuf)
 
 	return encoded, nil
 }
 
-func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded string) ([]byte, error) {
-	encryptedBuf, err := base64.StdEncoding.DecodeString(encoded)
+func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded []byte) ([]byte, error) {
+	decodedBuf := make([]byte, base64.StdEncoding.DecodedLen(len(encoded)))
+	n, err := base64.StdEncoding.Decode(decodedBuf, encoded)
 	if err != nil {
 		return nil, err
 	}
+
+	encryptedBuf := decodedBuf[:n]
 
 	compressedBuf, err := cipher.Decrypt(encryptedBuf)
 	if err != nil {
@@ -327,10 +318,25 @@ func GZipCipherBase64Decode(cipher *cipher.CipherAesGcm, encoded string) ([]byte
 	return buf, nil
 }
 
-func (s *YandexMailService) encodeMessage(msg []byte) (string, error) {
-	return GZipCipherBase64Encode(s.cipher, msg)
+func (s *YandexMailService) SendMessage(buf []byte) error {
+	body, err := GZipCipherBase64Encode(s.cipher, buf)
+	if err != nil {
+		return err
+	}
+
+	return s.sendSmtpMail(string(body))
 }
 
-func (s *YandexMailService) decodeMessage(msg string) ([]byte, error) {
-	return GZipCipherBase64Decode(s.cipher, msg)
+func (s *YandexMailService) RecieveMessage() ([]byte, error) {
+	body, ok := <-s.mailCh
+	if !ok {
+		return nil, errors.New("closed")
+	}
+
+	buf, err := GZipCipherBase64Decode(s.cipher, body)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }

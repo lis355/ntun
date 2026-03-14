@@ -15,7 +15,11 @@
 			"env": {
 				"LOG_LEVEL": "debug",
 				"DEVELOPMENT": "true"
-			}
+			},
+			"args": [
+				"-c",
+				"test/testdata/configs/config.yaml"
+			]
 		},
 		{
 			"name": "ntun/dev",
