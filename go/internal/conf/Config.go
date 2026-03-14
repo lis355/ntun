@@ -21,11 +21,11 @@ type Config struct {
 	Transport any         `yaml:"-"`
 }
 
-type InputSocks5 struct {
+type Socks5Input struct {
 	Port uint16 `yaml:"port"`
 }
 
-type OutputDirect struct {
+type DirectOutput struct {
 }
 
 type Rate struct {
@@ -89,15 +89,22 @@ func parseRateLimit(s string) (uint32, error) {
 // RateLimit Rate   `yaml:"rateLimit"`
 // }
 
-type TransportTcpClient struct {
+type TcpClientTransport struct {
 	Host      string `yaml:"host"`
 	Port      uint16 `yaml:"port"`
 	RateLimit Rate   `yaml:"rateLimit"`
 }
 
-type TransportTcpServer struct {
+type TcpServerTransport struct {
 	Host      string `yaml:"host"`
 	Port      uint16 `yaml:"port"`
+	RateLimit Rate   `yaml:"rateLimit"`
+}
+
+type YandexWebRTCTransport struct {
+	JoinId    string `yaml:"joinId"`
+	MailUser  string `yaml:"user"`
+	MailPass  string `yaml:"pass"`
 	RateLimit Rate   `yaml:"rateLimit"`
 }
 
@@ -147,7 +154,7 @@ func (c *Config) parseInput(node yaml.Node) error {
 
 	switch raw.Typ {
 	case "socks5":
-		var input InputSocks5
+		var input Socks5Input
 		err = node.Decode(&input)
 		if err != nil {
 			return err
@@ -176,7 +183,7 @@ func (c *Config) parseOutput(node yaml.Node) error {
 
 	switch raw.Typ {
 	case "direct":
-		var output OutputDirect
+		var output DirectOutput
 		c.Output = &output
 	default:
 		return fmt.Errorf("Bad output type %s", raw.Typ)
@@ -201,14 +208,21 @@ func (c *Config) parseTransport(node yaml.Node) error {
 
 	switch raw.Typ {
 	case "tcp-client":
-		var transport TransportTcpClient
+		var transport TcpClientTransport
 		err = node.Decode(&transport)
 		if err != nil {
 			return err
 		}
 		c.Transport = &transport
 	case "tcp-server":
-		var transport TransportTcpServer
+		var transport TcpServerTransport
+		err = node.Decode(&transport)
+		if err != nil {
+			return err
+		}
+		c.Transport = &transport
+	case "ya-webrtc":
+		var transport YandexWebRTCTransport
 		err = node.Decode(&transport)
 		if err != nil {
 			return err

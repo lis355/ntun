@@ -8,6 +8,11 @@ import (
 	"ntun/internal/app"
 	"ntun/internal/conf"
 	"ntun/internal/log"
+	"ntun/ntun"
+	"ntun/ntun/connections"
+	"ntun/ntun/connections/inputs"
+	"ntun/ntun/connections/outputs"
+	"ntun/ntun/transport"
 	"os"
 	"os/signal"
 	"path"
@@ -30,6 +35,30 @@ func main() {
 
 	cfg := parseConfig(configPath)
 	slog.Debug(fmt.Sprintf("%+v", cfg))
+
+	node := ntun.NewNode(cfg)
+	slog.Info(fmt.Sprintf("Client node: %s", node.String()))
+
+	var outputDialer connections.Dialer
+	if cfg.Output != nil {
+		if _, ok := cfg.Output.(conf.DirectOutput); ok {
+			outputDialer = outputs.NewDirectOutput()
+		}
+	}
+
+	transporter := createTransporter(node)
+	node.CreateConnManager(transporter, outputDialer)
+
+	if cfg.Input != nil {
+		if socks5Input, ok := cfg.Input.(conf.Socks5Input); ok {
+			sock5Server := inputs.NewSock5NoAuthServer(node.ConnManager)
+			if err := sock5Server.ListenAndServe(socks5Input.Port); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	node.Start()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -74,4 +103,22 @@ func parseConfig(configPath string) *conf.Config {
 	}
 
 	return &cfg
+}
+
+func createTransporter(node *ntun.Node) transport.Transporter {
+	if node.Config.Transport != nil {
+		panic(fmt.Errorf("nil transport"))
+	}
+
+	switch transportCfg := node.Config.Transport.(type) {
+	case *conf.TcpClientTransport:
+		return transport.NewTcpClientTransport(transportCfg)
+	case *conf.TcpServerTransport:
+		return transport.NewTcpServerTransport(transportCfg)
+	case *conf.YandexWebRTCTransport:
+		// return transport.NewTcpServerTransport(transportCfg)
+		return nil
+	default:
+		panic(fmt.Errorf("unknown transport type %v", transportCfg))
+	}
 }

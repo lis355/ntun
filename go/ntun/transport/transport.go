@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"ntun/internal/conf"
+	"strconv"
 	"time"
 )
 
@@ -14,7 +16,7 @@ type Transporter interface {
 // const defaultDataBufferSize = 4 * ntun.Kilobyte
 
 type TcpServerTransport struct {
-	port int
+	cfg *conf.TcpServerTransport
 
 	// ctx    context.Context
 	// cancel context.CancelFunc
@@ -27,9 +29,9 @@ type TcpServerTransport struct {
 	// running bool
 }
 
-func NewTcpServerTransport(port int) (c *TcpServerTransport) {
+func NewTcpServerTransport(cfg *conf.TcpServerTransport) (c *TcpServerTransport) {
 	return &TcpServerTransport{
-		port: port,
+		cfg: cfg,
 		// connChan: make(chan net.Conn),
 	}
 }
@@ -39,11 +41,11 @@ func (c *TcpServerTransport) Transport() (net.Conn, error) {
 		return nil, fmt.Errorf("[TcpServerTransport] listener is not started")
 	}
 
-	slog.Debug(fmt.Sprintf("[TcpServerTransport] trying to accept with localhost:%d", c.port))
+	slog.Debug("[TcpServerTransport] trying to accept connection")
 
 	conn, err := c.listener.Accept()
 	if err != nil {
-		slog.Debug("[TcpServerTransport] connect failed, waiting")
+		slog.Debug("[TcpServerTransport] connection failed, waiting")
 
 		return nil, err
 	}
@@ -110,7 +112,14 @@ func (c *TcpServerTransport) Transport() (net.Conn, error) {
 // }
 
 func (c *TcpServerTransport) Listen() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", c.port))
+	host := c.cfg.Host
+	if host == "" {
+		host = "localhost"
+	}
+
+	address := net.JoinHostPort(host, strconv.Itoa(int(c.cfg.Port)))
+
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
@@ -163,7 +172,7 @@ const TcpClientDialTimeout = 10 * time.Second
 const TcpClientReconnectTimeout = 1 * time.Second
 
 type TcpClientTransport struct {
-	address string
+	cfg *conf.TcpClientTransport
 
 	// ctx    context.Context
 	// cancel context.CancelFunc
@@ -177,9 +186,9 @@ type TcpClientTransport struct {
 	dialer net.Dialer
 }
 
-func NewTcpClientTransport(address string) (c *TcpClientTransport) {
+func NewTcpClientTransport(cfg *conf.TcpClientTransport) (c *TcpClientTransport) {
 	return &TcpClientTransport{
-		address: address,
+		cfg: cfg,
 		// connChan: make(chan net.Conn),
 		dialer: net.Dialer{
 			Timeout:   30 * time.Second,
@@ -189,16 +198,18 @@ func NewTcpClientTransport(address string) (c *TcpClientTransport) {
 }
 
 func (c *TcpClientTransport) Transport() (net.Conn, error) {
-	slog.Debug(fmt.Sprintf("[TcpClientTransport] trying to connect to %s", c.address))
+	address := net.JoinHostPort(c.cfg.Host, strconv.Itoa(int(c.cfg.Port)))
 
-	conn, err := c.dialer.Dial("tcp", c.address)
+	slog.Debug(fmt.Sprintf("[TcpClientTransport] trying to connect to %s", address))
+
+	conn, err := c.dialer.Dial("tcp", address)
 	if err != nil {
 		slog.Debug("[TcpClientTransport] connect failed")
 
 		return nil, err
 	}
 
-	slog.Debug(fmt.Sprintf("[TcpClientTransport] connected successfull to %s", c.address))
+	slog.Debug(fmt.Sprintf("[TcpClientTransport] connected successfull to %s", address))
 
 	return conn, nil
 }

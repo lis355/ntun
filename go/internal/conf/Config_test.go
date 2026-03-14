@@ -41,10 +41,10 @@ func TestConfig(t *testing.T) {
 				Id:        ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
 				Allowed:   []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
 				CipherKey: "123",
-				Input: &InputSocks5{
+				Input: &Socks5Input{
 					Port: 8080,
 				},
-				Transport: &TransportTcpClient{
+				Transport: &TcpClientTransport{
 					Host:      "localhost",
 					Port:      8303,
 					RateLimit: Rate{50 * 1024 * 1024},
@@ -71,8 +71,8 @@ func TestConfig(t *testing.T) {
 				Id:        ParseUUID("6a971624-0b19-4c8d-8ceb-d5544675e898"),
 				Allowed:   []uuid.UUID{ParseUUID("1ee18100-39f7-434c-9206-47bfe572169d")},
 				CipherKey: "123",
-				Output:    &OutputDirect{},
-				Transport: &TransportTcpServer{
+				Output:    &DirectOutput{},
+				Transport: &TcpServerTransport{
 					Host:      "localhost",
 					Port:      8303,
 					RateLimit: Rate{50 * 1024 * 1024},

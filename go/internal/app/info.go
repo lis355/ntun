@@ -1,6 +1,6 @@
 package app
 
 const (
-	Name    = "ntun"
-	Version = "1.0.0"
+	Name    = "ntun-go"
+	Version = "1.0.0-alpha"
 )

@@ -21,7 +21,7 @@ import (
 
 type ConnManager struct {
 	node          *Node
-	dialer        ntunConnections.Dialer
+	outputDialer  ntunConnections.Dialer // TODO hack сделать абстракцию
 	transporter   transport.Transporter
 	transportConn net.Conn
 	inHs, outHs   *TransportHandshake
@@ -31,11 +31,11 @@ type ConnManager struct {
 	wasConnected bool
 }
 
-func NewConnManager(node *Node, dialer ntunConnections.Dialer) *ConnManager {
+func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnManager {
 	return &ConnManager{
-		node:        node,
-		dialer:      dialer,
-		transporter: node.Transporter,
+		node:         node,
+		outputDialer: outputDialer,
+		transporter:  node.Transporter,
 	}
 }
 
@@ -289,9 +289,17 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
+	if m.outputDialer == nil {
+		conn.Close()
+
+		slog.Debug(fmt.Sprintf("%s: current node has not outputs", log.ObjName(m)))
+
+		return
+	}
+
 	// slog.Debug(fmt.Sprintf("%s: mux stream accepted connect to %s", log.ObjName(m), msg.Address))
 
-	outConn, err := m.dialer.Dial(msg.Address)
+	outConn, err := m.outputDialer.Dial(msg.Address)
 	if err != nil {
 		conn.Close()
 

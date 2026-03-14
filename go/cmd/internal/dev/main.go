@@ -12,6 +12,7 @@ import (
 	"ntun/internal/utils"
 	"ntun/ntun"
 	"ntun/ntun/connections/inputs"
+	"ntun/ntun/connections/outputs"
 	"ntun/ntun/messages/yandex"
 	"ntun/ntun/transport"
 	"os"
@@ -169,10 +170,11 @@ func main() {
 
 	const nodeTcpServerConnPort = 8080
 
-	// clientTransport := transport.NewTcpClientTransport(fmt.Sprintf("localhost:%d", nodeTcpServerConnPort))
+	// clientTransport := transport.NewTcpClientTransport(&conf.TcpClientTransport{Host: "localhost", Port: nodeTcpServerConnPort})
 	clientTransport := tr1
-	clientNode := ntun.NewNode(&conf.Config{Id: clientId, Name: "client", Allowed: []uuid.UUID{serverId}, CipherKey: cipherKey}, clientTransport)
+	clientNode := ntun.NewNode(&conf.Config{Id: clientId, Name: "client", Allowed: []uuid.UUID{serverId}, CipherKey: cipherKey})
 	slog.Info(fmt.Sprintf("Client node: %s", clientNode.String()))
+	clientNode.CreateConnManager(clientTransport, nil)
 	clientNode.Start()
 
 	const proxyServerPort = 8081
@@ -184,15 +186,16 @@ func main() {
 
 	// Server
 
-	// serverTransport := transport.NewTcpServerTransport(nodeTcpServerConnPort)
+	// serverTransport := transport.NewTcpServerTransport(&conf.TcpServerTransport{Port: nodeTcpServerConnPort})
 	// err = serverTransport.Listen()
 	// if err != nil {
 	// 	panic(err)
 	// }
 	serverTransport := tr2
 
-	serverNode := ntun.NewNode(&conf.Config{Id: serverId, Name: "server", Allowed: []uuid.UUID{clientId}, CipherKey: cipherKey}, serverTransport)
+	serverNode := ntun.NewNode(&conf.Config{Id: serverId, Name: "server", Allowed: []uuid.UUID{clientId}, CipherKey: cipherKey})
 	slog.Info(fmt.Sprintf("Server node: %s", serverNode.String()))
+	clientNode.CreateConnManager(serverTransport, outputs.NewDirectOutput())
 	serverNode.Start()
 
 	// Test

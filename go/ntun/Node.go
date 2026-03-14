@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"ntun/internal/conf"
 	"ntun/internal/log"
+	"ntun/ntun/connections"
 	"ntun/ntun/connections/outputs"
 	"ntun/ntun/transport"
 
@@ -17,15 +18,10 @@ type Node struct {
 	*ConnManager
 }
 
-func NewNode(config *conf.Config, transporter transport.Transporter) *Node {
-	node := &Node{
-		Config:      config,
-		Transporter: transporter,
+func NewNode(config *conf.Config) *Node {
+	return &Node{
+		Config: config,
 	}
-
-	node.ConnManager = NewConnManager(node, outputs.NewDirectOutput())
-
-	return node
 }
 
 func (n *Node) String() string {
@@ -41,6 +37,12 @@ func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
 	}
 
 	return false
+}
+
+// TODO hack сделать абстракцию
+func (n *Node) CreateConnManager(transporter transport.Transporter, outputDialer connections.Dialer) {
+	n.Transporter = transporter
+	n.ConnManager = NewConnManager(n, outputs.NewDirectOutput())
 }
 
 func (n *Node) Start() error {
