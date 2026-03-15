@@ -1,4 +1,4 @@
-name: client
+name: test
 id: 6a971624-0b19-4c8d-8ceb-d5544675e898
 allowed: 
   - 1ee18100-39f7-434c-9206-47bfe572169d
@@ -7,7 +7,7 @@ input:
   type: socks5
   port: 8080
 transport: 
-  type: tcp-client
+  type: tcp-server
   host: localhost
   port: 8303
   rateLimit: 50mbps

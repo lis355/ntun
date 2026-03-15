@@ -4,19 +4,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"ntun/internal/conf"
+	"ntun/internal/cfg"
+	"ntun/internal/log"
 	"strconv"
 	"time"
 )
 
-type Transporter interface {
-	Transport() (net.Conn, error)
-}
-
-// const defaultDataBufferSize = 4 * ntun.Kilobyte
-
 type TcpServerTransport struct {
-	cfg *conf.TcpServerTransport
+	cfg *cfg.TcpServerTransport
 
 	// ctx    context.Context
 	// cancel context.CancelFunc
@@ -29,7 +24,7 @@ type TcpServerTransport struct {
 	// running bool
 }
 
-func NewTcpServerTransport(cfg *conf.TcpServerTransport) (c *TcpServerTransport) {
+func NewTcpServerTransport(cfg *cfg.TcpServerTransport) (c *TcpServerTransport) {
 	return &TcpServerTransport{
 		cfg: cfg,
 		// connChan: make(chan net.Conn),
@@ -38,19 +33,19 @@ func NewTcpServerTransport(cfg *conf.TcpServerTransport) (c *TcpServerTransport)
 
 func (c *TcpServerTransport) Transport() (net.Conn, error) {
 	if c.listener == nil {
-		return nil, fmt.Errorf("[TcpServerTransport] listener is not started")
+		return nil, fmt.Errorf("listener is not started")
 	}
 
-	slog.Debug("[TcpServerTransport] trying to accept connection")
+	slog.Debug(fmt.Sprintf("%s: trying to accept connection", log.ObjName(c)))
 
 	conn, err := c.listener.Accept()
 	if err != nil {
-		slog.Debug("[TcpServerTransport] connection failed, waiting")
+		slog.Debug(fmt.Sprintf("%s: connection failed, waiting", log.ObjName(c)))
 
 		return nil, err
 	}
 
-	slog.Debug(fmt.Sprintf("[TcpServerTransport] connected successfull with %s", conn.RemoteAddr().String()))
+	slog.Debug(fmt.Sprintf("%s: connected successfull with %s", log.ObjName(c), conn.RemoteAddr().String()))
 
 	return conn, nil
 }
@@ -126,6 +121,8 @@ func (c *TcpServerTransport) Listen() error {
 
 	c.listener = listener
 
+	slog.Debug(fmt.Sprintf("%s: listening %s", log.ObjName(c), address))
+
 	return nil
 
 	// for {
@@ -168,11 +165,16 @@ func (c *TcpServerTransport) Listen() error {
 	// }
 }
 
+func (c *TcpServerTransport) Close() error {
+	// TODO robust handle
+	return c.listener.Close()
+}
+
 const TcpClientDialTimeout = 10 * time.Second
 const TcpClientReconnectTimeout = 1 * time.Second
 
 type TcpClientTransport struct {
-	cfg *conf.TcpClientTransport
+	cfg *cfg.TcpClientTransport
 
 	// ctx    context.Context
 	// cancel context.CancelFunc
@@ -186,7 +188,7 @@ type TcpClientTransport struct {
 	dialer net.Dialer
 }
 
-func NewTcpClientTransport(cfg *conf.TcpClientTransport) (c *TcpClientTransport) {
+func NewTcpClientTransport(cfg *cfg.TcpClientTransport) (c *TcpClientTransport) {
 	return &TcpClientTransport{
 		cfg: cfg,
 		// connChan: make(chan net.Conn),
@@ -200,18 +202,27 @@ func NewTcpClientTransport(cfg *conf.TcpClientTransport) (c *TcpClientTransport)
 func (c *TcpClientTransport) Transport() (net.Conn, error) {
 	address := net.JoinHostPort(c.cfg.Host, strconv.Itoa(int(c.cfg.Port)))
 
-	slog.Debug(fmt.Sprintf("[TcpClientTransport] trying to connect to %s", address))
+	slog.Debug(fmt.Sprintf("%s: trying to connect to %s", log.ObjName(c), address))
 
 	conn, err := c.dialer.Dial("tcp", address)
 	if err != nil {
-		slog.Debug("[TcpClientTransport] connect failed")
+		slog.Debug(fmt.Sprintf("%s: connect failed", log.ObjName(c)))
 
 		return nil, err
 	}
 
-	slog.Debug(fmt.Sprintf("[TcpClientTransport] connected successfull to %s", address))
+	slog.Debug(fmt.Sprintf("%s: connected successfull to %s", log.ObjName(c), address))
 
 	return conn, nil
+}
+
+func (c *TcpClientTransport) Listen() error {
+	return nil
+}
+
+func (c *TcpClientTransport) Close() error {
+	// TODO close current connection
+	return nil
 }
 
 // func (c *TcpClientTransport) Start() error {

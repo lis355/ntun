@@ -10,8 +10,8 @@ import (
 	"ntun/internal/app"
 	"ntun/internal/connections"
 	"ntun/internal/log"
+	ntunConnections "ntun/internal/ntun/connections"
 	"ntun/internal/proxy"
-	"ntun/internal/transport"
 	"sync"
 	"time"
 
@@ -21,8 +21,7 @@ import (
 
 type ConnManager struct {
 	node          *Node
-	outputDialer  connections.Dialer // TODO hack сделать абстракцию
-	transporter   transport.Transporter
+	outputDialer  ntunConnections.Dialer // TODO hack сделать абстракцию
 	transportConn net.Conn
 	inHs, outHs   *TransportHandshake
 	client        bool
@@ -31,11 +30,10 @@ type ConnManager struct {
 	wasConnected bool
 }
 
-func NewConnManager(node *Node, outputDialer connections.Dialer) *ConnManager {
+func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnManager {
 	return &ConnManager{
 		node:         node,
 		outputDialer: outputDialer,
-		transporter:  node.Transporter,
 	}
 }
 
@@ -67,8 +65,12 @@ func (m *ConnManager) clear() {
 }
 
 func (m *ConnManager) process() {
+	if err := m.node.Transporter.Listen(); err != nil {
+		slog.Warn(fmt.Sprintf("%s: transport listen error: %v", log.ObjName(m), err))
+	}
+
 	for {
-		transportConn, err := m.transporter.Transport()
+		transportConn, err := m.node.Transporter.Transport()
 		if err == nil {
 			m.handleTransportConn(transportConn)
 		}

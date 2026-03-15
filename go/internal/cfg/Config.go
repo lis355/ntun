@@ -1,4 +1,4 @@
-package conf
+package cfg
 
 import (
 	"fmt"
@@ -22,6 +22,7 @@ type Config struct {
 }
 
 type Socks5Input struct {
+	Host string `yaml:"host"`
 	Port uint16 `yaml:"port"`
 }
 

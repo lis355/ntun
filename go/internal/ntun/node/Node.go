@@ -3,30 +3,34 @@ package node
 import (
 	"fmt"
 	"log/slog"
-	"ntun/internal/conf"
-	"ntun/internal/connections"
-	"ntun/internal/connections/outputs"
+	"ntun/internal/cfg"
 	"ntun/internal/log"
-	"ntun/internal/transport"
+	"ntun/internal/ntun/connections"
+	"ntun/internal/ntun/transport"
 
 	"github.com/google/uuid"
 )
 
 type Node struct {
-	Config *conf.Config
+	Config        *cfg.Config
+	Input, Output connections.Сonnecter
 	transport.Transporter
 	*ConnManager
 }
 
-func NewNode(config *conf.Config) *Node {
+func NewNode(config *cfg.Config) *Node {
 	return &Node{
 		Config: config,
 	}
 }
 
 func (n *Node) String() string {
-	return fmt.Sprintf("%s [%s]", n.Config.Id, n.Config.Name)
-	// return n.Config.Name
+	s := n.Config.Id.String()
+	if n.Config.Name != "" {
+		s += fmt.Sprintf(" [%s]", n.Config.Name)
+	}
+
+	return s
 }
 
 func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
@@ -39,10 +43,14 @@ func (n *Node) HasAllowedToConnectNodeId(id uuid.UUID) bool {
 	return false
 }
 
-// TODO hack сделать абстракцию
-func (n *Node) CreateConnManager(transporter transport.Transporter, outputDialer connections.Dialer) {
+func (n *Node) AssignComponents(input, output connections.Сonnecter, transporter transport.Transporter) {
+	// TODO hack сделать абстракцию
+	outputDialer, _ := output.(connections.Dialer)
+
+	n.Input = input
+	n.Output = output
 	n.Transporter = transporter
-	n.ConnManager = NewConnManager(n, outputs.NewDirectOutput())
+	n.ConnManager = NewConnManager(n, outputDialer)
 }
 
 func (n *Node) Start() error {
@@ -53,11 +61,6 @@ func (n *Node) Start() error {
 	if err != nil {
 		return err
 	}
-
-	// err = n.Transporter.Start()
-	// if err != nil {
-	// 	return err
-	// }
 
 	return err
 }
@@ -70,11 +73,6 @@ func (n *Node) Stop() error {
 	if err != nil {
 		return err
 	}
-
-	// err = n.Transporter.Stop()
-	// if err != nil {
-	// 	return err
-	// }
 
 	return err
 }

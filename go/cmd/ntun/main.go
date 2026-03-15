@@ -1,31 +1,28 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"ntun/internal/app"
-	"ntun/internal/conf"
-	"ntun/internal/connections"
-	"ntun/internal/connections/inputs"
-	"ntun/internal/connections/outputs"
+	"ntun/internal/cfg"
 	"ntun/internal/log"
-	"ntun/internal/node"
-	"ntun/internal/transport"
+	"ntun/internal/ntun/fabric"
+	"ntun/internal/ntun/node"
 	"os"
 	"os/signal"
 	"path"
-	"runtime"
 	"strings"
 	"syscall"
 )
 
 func main() {
-	app.Init()
+	app.InitEnv()
 	log.Init()
-
-	slog.Info(fmt.Sprintf("%s v%s (%s)", app.Name, app.Version, runtime.Version()))
+	app.PrintLogo()
+	app.PrintHeader()
 
 	var configPath string
 	flag.StringVar(&configPath, "c", "", "config file path (short)")
@@ -37,24 +34,43 @@ func main() {
 	slog.Debug(fmt.Sprintf("%+v", cfg))
 
 	node := node.NewNode(cfg)
-	slog.Info(fmt.Sprintf("Client node: %s", node.String()))
+	slog.Info(fmt.Sprintf("Node: %s", node.String()))
 
-	var outputDialer connections.Dialer
-	if cfg.Output != nil {
-		if _, ok := cfg.Output.(conf.DirectOutput); ok {
-			outputDialer = outputs.NewDirectOutput()
+	input, err := fabric.CreateInput(node)
+	if err != nil {
+		panic(err)
+	}
+
+	output, err := fabric.CreateOutput(node)
+	if err != nil {
+		panic(err)
+	}
+
+	if input == nil && output == nil ||
+		input != nil && output != nil {
+		panic(errors.New("can't have none or both input and output"))
+	}
+
+	transporter, err := fabric.CreateTransporter(node)
+	if err != nil {
+		panic(err)
+	}
+
+	if transporter == nil {
+		panic(errors.New("can't have not transport"))
+	}
+
+	node.AssignComponents(input, output, transporter)
+
+	if input != nil {
+		if err := input.Listen(); err != nil {
+			panic(err)
 		}
 	}
 
-	transporter := createTransporter(node)
-	node.CreateConnManager(transporter, outputDialer)
-
-	if cfg.Input != nil {
-		if socks5Input, ok := cfg.Input.(conf.Socks5Input); ok {
-			sock5Server := inputs.NewSock5NoAuthServer(node.ConnManager)
-			if err := sock5Server.ListenAndServe(socks5Input.Port); err != nil {
-				panic(err)
-			}
+	if output != nil {
+		if err := output.Listen(); err != nil {
+			panic(err)
 		}
 	}
 
@@ -65,7 +81,7 @@ func main() {
 	<-stop
 }
 
-func parseConfig(configPath string) *conf.Config {
+func parseConfig(configPath string) *cfg.Config {
 	if configPath == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -96,29 +112,11 @@ func parseConfig(configPath string) *conf.Config {
 		panic(fmt.Errorf("config file %s error %v", configPath, err))
 	}
 
-	var cfg conf.Config
+	var cfg cfg.Config
 	err = cfg.Parse([]byte(strings.ReplaceAll(string(configBuf), "\t", "  ")))
 	if err != nil {
 		panic(fmt.Errorf("config file %s parse error %v", configPath, err))
 	}
 
 	return &cfg
-}
-
-func createTransporter(node *node.Node) transport.Transporter {
-	if node.Config.Transport != nil {
-		panic(fmt.Errorf("nil transport"))
-	}
-
-	switch transportCfg := node.Config.Transport.(type) {
-	case *conf.TcpClientTransport:
-		return transport.NewTcpClientTransport(transportCfg)
-	case *conf.TcpServerTransport:
-		return transport.NewTcpServerTransport(transportCfg)
-	case *conf.YandexWebRTCTransport:
-		// return transport.NewTcpServerTransport(transportCfg)
-		return nil
-	default:
-		panic(fmt.Errorf("unknown transport type %v", transportCfg))
-	}
 }

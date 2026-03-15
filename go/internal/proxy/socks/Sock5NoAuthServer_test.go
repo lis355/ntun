@@ -1,10 +1,10 @@
-package inputs
+package socks
 
 import (
 	"encoding/hex"
 	"fmt"
-	"ntun/internal/connections/outputs"
 	"ntun/internal/dev"
+	"ntun/internal/ntun/connections/outputs"
 	"ntun/internal/utils"
 	"testing"
 )
@@ -18,12 +18,12 @@ func TestSock5NoAuthServer(t *testing.T) {
 	sock5Server := NewSock5NoAuthServer(outputs.NewDirectOutput())
 
 	const proxyServerPort = 8082
-	err := sock5Server.ListenAndServe(proxyServerPort)
+	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
+
+	err := sock5Server.Listen(socks5ProxyAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
 	requester, err := dev.NewRequester(socks5ProxyAddress)
 	if err != nil {

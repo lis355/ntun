@@ -24,7 +24,7 @@ for config in "${BUILD_CONFIGS[@]}"; do
     
     echo "Building for $description ($goos/$goarch)"
     
-    GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BUILD_DIR/$PROGRAM_NAME-$PROGRAM_VERSION-$goos-$goarch" "$BUILD_PACKAGE_DIR"
+    GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BUILD_DIR/$PROGRAM_NAME-v$PROGRAM_VERSION-$goos-$goarch" "$BUILD_PACKAGE_DIR"
     
     if [ $? -eq 0 ]; then
         echo "Success"

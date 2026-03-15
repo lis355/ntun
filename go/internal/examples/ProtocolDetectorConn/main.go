@@ -6,9 +6,9 @@ import (
 	"net"
 	"ntun/internal/app"
 	"ntun/internal/connections"
-	"ntun/internal/connections/inputs"
 	"ntun/internal/dev"
 	"ntun/internal/log"
+	"ntun/internal/proxy/socks"
 	"os"
 )
 
@@ -34,17 +34,16 @@ func (d *Dialer) Dial(dstAddress string) (net.Conn, error) {
 }
 
 func main() {
-	app.Init()
+	app.InitEnv()
 	log.Init()
 
 	const proxyServerPort = 8082
-	sock5Server := inputs.NewSock5NoAuthServer(&Dialer{})
-	err := sock5Server.ListenAndServe(proxyServerPort)
+	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
+	sock5Server := socks.NewSock5NoAuthServer(&Dialer{})
+	err := sock5Server.Listen(socks5ProxyAddress)
 	if err != nil {
 		panic(err)
 	}
-
-	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
 
 	requester, err := dev.NewRequester(socks5ProxyAddress)
 	if err != nil {

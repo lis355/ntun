@@ -1,4 +1,4 @@
-package inputs
+package socks
 
 import (
 	"bytes"
@@ -8,7 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"ntun/internal/connections"
+	"ntun/internal/log"
+	"ntun/internal/ntun/connections"
 	"ntun/internal/proxy"
 	"strconv"
 )
@@ -30,15 +31,15 @@ func NewSock5NoAuthServer(dialer connections.Dialer) (c *Sock5NoAuthServer) {
 	}
 }
 
-func (s *Sock5NoAuthServer) ListenAndServe(port uint16) error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+func (s *Sock5NoAuthServer) Listen(address string) error {
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
 	}
 
 	s.listener = listener
 
-	slog.Info(fmt.Sprintf("[Sock5NoAuthServer]: listening on http://localhost:%d", port))
+	slog.Info(fmt.Sprintf("%s: listening on socks5://%s", log.ObjName(s), address))
 
 	go func() {
 		for {
@@ -48,7 +49,7 @@ func (s *Sock5NoAuthServer) ListenAndServe(port uint16) error {
 					return
 				}
 
-				slog.Error(fmt.Sprintf("[Sock5NoAuthServer] accept error: %v", err))
+				slog.Error(fmt.Sprintf("%s: accept error: %v", log.ObjName(s), err))
 
 				continue
 			}
@@ -63,23 +64,20 @@ func (s *Sock5NoAuthServer) ListenAndServe(port uint16) error {
 func (s *Sock5NoAuthServer) Close() error {
 	err := s.listener.Close()
 	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer]: error %s", err))
+		slog.Error(fmt.Sprintf("[%s]: error %s", log.ObjName(s), err))
 
 		return err
 	}
 
-	slog.Info("[Sock5NoAuthServer]: closed")
+	slog.Info(fmt.Sprintf("[%s]: closed", log.ObjName(s)))
 
 	return nil
 }
 
 func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
-	// DEBUG CLEAR SCREEN
-	// fmt.Print("\x1b[2J\x1b[1;1H")
-
 	address, err := s.handshakeNoAuth(srcConn)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] handshake error: %v", err))
+		slog.Error(fmt.Sprintf("[%s]: handshake error: %v", log.ObjName(s), err))
 
 		srcConn.Close()
 
@@ -88,14 +86,14 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 
 	dstConn, err := s.handleDial(srcConn, address)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[Sock5NoAuthServer] dial error: %v", err))
+		slog.Error(fmt.Sprintf("[%s]: dial error: %v", log.ObjName(s), err))
 
 		srcConn.Close()
 
 		return
 	}
 
-	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
+	// slog.Debug(fmt.Sprintf("[%s]: connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 
 	// DEBUG
 	// dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("socks"), false)
@@ -123,29 +121,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 
 	// protocolWg.Wait()
 
-	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
-}
-
-func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Conn, error) {
-	// slog.Debug(fmt.Sprintf("[Sock5NoAuthServer] accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
-
-	// Connect to target
-	dstConn, err := s.dialer.Dial(address)
-	if err != nil {
-		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
-		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
-
-		return nil, err
-	}
-
-	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
-	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
-		dstConn.Close()
-
-		return nil, err
-	}
-
-	return dstConn, nil
+	// slog.Debug(fmt.Sprintf("[%s]: disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 }
 
 func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
@@ -160,7 +136,7 @@ func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 
 	vrs := buf[0]
 	if vrs != version {
-		return "", fmt.Errorf("Unsupported version %d", version)
+		return "", fmt.Errorf("unsupported version %d", version)
 	}
 
 	methodsLen := buf[1]
@@ -174,7 +150,7 @@ func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 			return "", err
 		}
 
-		return "", fmt.Errorf("No acceptable method")
+		return "", fmt.Errorf("no acceptable method")
 	}
 
 	if _, err := srcConn.Write([]byte{version, methodAuthNone}); err != nil {
@@ -193,7 +169,7 @@ func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 	// buf[2]=0 (Reserved)
 	if cmd != 1 &&
 		rsv != 0 {
-		return "", fmt.Errorf("Unsupported command %d", cmd)
+		return "", fmt.Errorf("unsupported command %d", cmd)
 	}
 
 	var host string
@@ -224,7 +200,7 @@ func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 		}
 		host = net.IP(ip).String()
 	default:
-		return "", fmt.Errorf("Unsupported address type %d", atyp)
+		return "", fmt.Errorf("unsupported address type %d", atyp)
 	}
 
 	// Port (2 bytes, BigEndian)
@@ -235,4 +211,26 @@ func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {
 	port := strconv.FormatUint(uint64(binary.BigEndian.Uint16(buf[:2])), 10)
 
 	return net.JoinHostPort(host, port), nil
+}
+
+func (s *Sock5NoAuthServer) handleDial(srcConn net.Conn, address string) (net.Conn, error) {
+	// slog.Debug(fmt.Sprintf("[%s]: accept connection from %s, wants to connect to %s", srcConn.RemoteAddr(), address))
+
+	// Connect to target
+	dstConn, err := s.dialer.Dial(address)
+	if err != nil {
+		// Reply: REP=1 (General failure) [VER, REP, RSV, ATYP, BND.ADDR, BND.PORT]
+		srcConn.Write([]byte{version, 1, 0, 1, 0, 0, 0, 0, 0, 0})
+
+		return nil, err
+	}
+
+	// Reply: REP=0 (Success), ATYP=1(tcp), BND.ADDR=0.0.0.0, BND.PORT=0
+	if _, err := srcConn.Write([]byte{version, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+		dstConn.Close()
+
+		return nil, err
+	}
+
+	return dstConn, nil
 }

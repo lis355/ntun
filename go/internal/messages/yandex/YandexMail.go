@@ -19,15 +19,16 @@ const (
 	smtpPort   = 587
 )
 
-type inboxProcessor func(start bool) error
+type inboxProcessor func(start bool) error // TODO ну херня какая то
 
 type YandexMail struct {
 	lock            sync.Mutex
-	client          *imapclient.Client
 	idleCmd         *imapclient.IdleCommand
 	email, password string
 	inboxProcessor  inboxProcessor
 	newMailCh       chan struct{}
+
+	Client *imapclient.Client
 }
 
 func NewYandexMail(email, password string, inboxProcessor inboxProcessor) *YandexMail {
@@ -64,15 +65,15 @@ func (s *YandexMail) Listen() error {
 }
 
 func (s *YandexMail) handleClient(client *imapclient.Client) error {
-	s.client = client
+	s.Client = client
 
 	defer s.Close()
 
-	if err := s.client.Login(s.email, s.password).Wait(); err != nil {
+	if err := s.Client.Login(s.email, s.password).Wait(); err != nil {
 		return err
 	}
 
-	_, err := s.client.Select("INBOX", nil).Wait()
+	_, err := s.Client.Select("INBOX", nil).Wait()
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func (s *YandexMail) handleClient(client *imapclient.Client) error {
 	}
 
 	for {
-		s.idleCmd, err = s.client.Idle()
+		s.idleCmd, err = s.Client.Idle()
 		if err != nil {
 			return err
 		}
@@ -127,39 +128,33 @@ func (s *YandexMail) handleClient(client *imapclient.Client) error {
 
 func (s *YandexMail) Close() error {
 	s.lock.Lock()
-	if s.client == nil {
+	if s.Client == nil {
 		s.lock.Unlock()
 
 		return errors.New("already closed")
 	}
 
-	err := s.shutdown()
+	if s.idleCmd != nil {
+		s.idleCmd.Close()
+		s.idleCmd = nil
+	}
+
+	err := s.Client.Close()
+	if err != nil {
+		return err
+	}
+
+	s.Client = nil
+
+	close(s.newMailCh)
 
 	s.lock.Unlock()
 
 	return err
 }
 
-func (s *YandexMail) shutdown() error {
-	if s.idleCmd != nil {
-		s.idleCmd.Close()
-		s.idleCmd = nil
-	}
-
-	err := s.client.Close()
-	if err != nil {
-		return err
-	}
-
-	s.client = nil
-
-	close(s.newMailCh)
-
-	return nil
-}
-
 func (s *YandexMail) DeleteMail(uid imap.UID) error {
-	storeCmd := s.client.Store(imap.UIDSetNum(uid), &imap.StoreFlags{
+	storeCmd := s.Client.Store(imap.UIDSetNum(uid), &imap.StoreFlags{
 		Op:    imap.StoreFlagsAdd,
 		Flags: []imap.Flag{imap.FlagDeleted},
 	}, nil)
@@ -168,7 +163,7 @@ func (s *YandexMail) DeleteMail(uid imap.UID) error {
 		return err
 	}
 
-	if err := s.client.Expunge().Close(); err != nil {
+	if err := s.Client.Expunge().Close(); err != nil {
 		return err
 	}
 

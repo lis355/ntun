@@ -12,3 +12,11 @@ func NewDirectOutput() *DirectOutput {
 func (d *DirectOutput) Dial(dstAddress string) (net.Conn, error) {
 	return net.Dial("tcp", dstAddress)
 }
+
+func (d *DirectOutput) Listen() error {
+	return nil
+}
+
+func (d *DirectOutput) Close() error {
+	return nil
+}
