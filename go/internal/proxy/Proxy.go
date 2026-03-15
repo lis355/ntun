@@ -1,4 +1,4 @@
-package ntun
+package proxy
 
 import (
 	"fmt"

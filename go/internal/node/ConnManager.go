@@ -1,4 +1,4 @@
-package ntun
+package node
 
 import (
 	"encoding/binary"
@@ -10,8 +10,8 @@ import (
 	"ntun/internal/app"
 	"ntun/internal/connections"
 	"ntun/internal/log"
-	ntunConnections "ntun/ntun/connections"
-	"ntun/ntun/transport"
+	"ntun/internal/proxy"
+	"ntun/internal/transport"
 	"sync"
 	"time"
 
@@ -21,7 +21,7 @@ import (
 
 type ConnManager struct {
 	node          *Node
-	outputDialer  ntunConnections.Dialer // TODO hack сделать абстракцию
+	outputDialer  connections.Dialer // TODO hack сделать абстракцию
 	transporter   transport.Transporter
 	transportConn net.Conn
 	inHs, outHs   *TransportHandshake
@@ -31,7 +31,7 @@ type ConnManager struct {
 	wasConnected bool
 }
 
-func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnManager {
+func NewConnManager(node *Node, outputDialer connections.Dialer) *ConnManager {
 	return &ConnManager{
 		node:         node,
 		outputDialer: outputDialer,
@@ -328,7 +328,7 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 		}
 	}()
 
-	Proxy(conn, outConn)
+	proxy.Proxy(conn, outConn)
 
 	wg.Wait()
 }

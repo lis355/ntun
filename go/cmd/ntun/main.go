@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"ntun/internal/app"
 	"ntun/internal/conf"
+	"ntun/internal/connections"
+	"ntun/internal/connections/inputs"
+	"ntun/internal/connections/outputs"
 	"ntun/internal/log"
-	"ntun/ntun"
-	"ntun/ntun/connections"
-	"ntun/ntun/connections/inputs"
-	"ntun/ntun/connections/outputs"
-	"ntun/ntun/transport"
+	"ntun/internal/node"
+	"ntun/internal/transport"
 	"os"
 	"os/signal"
 	"path"
@@ -36,7 +36,7 @@ func main() {
 	cfg := parseConfig(configPath)
 	slog.Debug(fmt.Sprintf("%+v", cfg))
 
-	node := ntun.NewNode(cfg)
+	node := node.NewNode(cfg)
 	slog.Info(fmt.Sprintf("Client node: %s", node.String()))
 
 	var outputDialer connections.Dialer
@@ -105,7 +105,7 @@ func parseConfig(configPath string) *conf.Config {
 	return &cfg
 }
 
-func createTransporter(node *ntun.Node) transport.Transporter {
+func createTransporter(node *node.Node) transport.Transporter {
 	if node.Config.Transport != nil {
 		panic(fmt.Errorf("nil transport"))
 	}

@@ -1,13 +1,13 @@
-package ntun
+package node
 
 import (
 	"fmt"
 	"log/slog"
 	"ntun/internal/conf"
+	"ntun/internal/connections"
+	"ntun/internal/connections/outputs"
 	"ntun/internal/log"
-	"ntun/ntun/connections"
-	"ntun/ntun/connections/outputs"
-	"ntun/ntun/transport"
+	"ntun/internal/transport"
 
 	"github.com/google/uuid"
 )

@@ -3,9 +3,9 @@ package inputs
 import (
 	"encoding/hex"
 	"fmt"
+	"ntun/internal/connections/outputs"
 	"ntun/internal/dev"
 	"ntun/internal/utils"
-	"ntun/ntun/connections/outputs"
 	"testing"
 )
 

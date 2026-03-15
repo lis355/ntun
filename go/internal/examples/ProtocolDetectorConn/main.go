@@ -6,9 +6,9 @@ import (
 	"net"
 	"ntun/internal/app"
 	"ntun/internal/connections"
+	"ntun/internal/connections/inputs"
 	"ntun/internal/dev"
 	"ntun/internal/log"
-	"ntun/ntun/connections/inputs"
 	"os"
 )
 

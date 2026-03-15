@@ -8,8 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"ntun/ntun"
-	"ntun/ntun/connections"
+	"ntun/internal/connections"
+	"ntun/internal/proxy"
 	"strconv"
 )
 
@@ -119,7 +119,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	// 	}
 	// }()
 
-	ntun.Proxy(srcConn, dstConn)
+	proxy.Proxy(srcConn, dstConn)
 
 	// protocolWg.Wait()
 

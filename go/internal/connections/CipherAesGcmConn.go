@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"ntun/ntun/cipher"
+	"ntun/internal/cipher"
 )
 
 const (

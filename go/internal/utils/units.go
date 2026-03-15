@@ -1,4 +1,4 @@
-package ntun
+package utils
 
 const (
 	Byte     = 1
@@ -7,14 +7,3 @@ const (
 	Gigabyte = Megabyte * 1024
 	Terabyte = Gigabyte * 1024
 )
-
-type Service interface {
-	Start() error
-	Stop() error
-}
-
-type Input interface {
-}
-
-type Output interface {
-}
