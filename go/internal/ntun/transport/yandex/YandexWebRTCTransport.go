@@ -240,6 +240,10 @@ func NewYandexWebRTCTransport(cfg *cfg.YandexWebRTCTransport, node *node.Node) (
 }
 
 func (y *YandexWebRTCTransport) Transport() (net.Conn, error) {
+
+	// conn = dev.NewSnifferHexDumpDebugConn(conn, fmt.Sprintf("[%s]", log.ObjName(c)), false)
+	// conn = connections.NewBufferedConn(conn, 4096, 10*time.Millisecond)
+
 	return nil, nil
 }
 
