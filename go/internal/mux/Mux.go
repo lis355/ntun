@@ -230,10 +230,10 @@ func (m *msgStreamData) Decode(buf []byte) error {
 func (m *Mux) Listen() error {
 	return nil
 
-	go m.doRead()
-	go m.doWrite()
+	// go m.doRead()
+	// go m.doWrite()
 
-	return nil
+	// return nil
 }
 
 func (m *Mux) doRead() error {
@@ -368,32 +368,32 @@ func (m *Mux) doWrite() error {
 func (m *Mux) CreateStream() (net.Conn, error) {
 	return m.session.Open()
 
-	stream, err := m.doCreateStream()
-	if err != nil {
-		return nil, m.shutdown(err)
-	}
+	// stream, err := m.doCreateStream()
+	// if err != nil {
+	// 	return nil, m.shutdown(err)
+	// }
 
-	slog.Debug(fmt.Sprintf("%p mux send msgStreamConnect id=%s", m, stream.id))
-	m.writeMessage(&msgStreamConnect{msgStream{msg{msgTypeStreamConnect}, stream.id}})
+	// slog.Debug(fmt.Sprintf("%p mux send msgStreamConnect id=%s", m, stream.id))
+	// m.writeMessage(&msgStreamConnect{msgStream{msg{msgTypeStreamConnect}, stream.id}})
 
-	return stream, nil
+	// return stream, nil
 }
 
 func (m *Mux) Accept() (net.Conn, error) {
 	return m.session.Accept()
 
-	stream, ok := <-m.acceptCh
-	if !ok {
-		return nil, io.EOF
-	}
+	// stream, ok := <-m.acceptCh
+	// if !ok {
+	// 	return nil, io.EOF
+	// }
 
-	return stream, nil
+	// return stream, nil
 }
 
 func (m *Mux) Close() error {
 	return m.session.Close()
 
-	return m.shutdown(nil)
+	// return m.shutdown(nil)
 }
 
 func (m *Mux) Addr() net.Addr {

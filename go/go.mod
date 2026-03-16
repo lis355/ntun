@@ -44,7 +44,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/gorilla/websocket v1.5.3
 	github.com/libp2p/go-buffer-pool v0.0.2 // indirect
-	github.com/libp2p/go-yamux v1.4.1 // indirect
+	github.com/libp2p/go-yamux v1.4.1
 	github.com/pion/webrtc/v3 v3.3.6
 	github.com/wneessen/go-mail v0.7.2
 )
