@@ -54,7 +54,7 @@ type Mux struct {
 }
 
 func NewMux(conn net.Conn, client bool) (*Mux, error) {
-	// DEBUG turn off yamux warnings about tcp resets
+	// NOTE turn off yamux warnings about tcp resets
 	config := yamux.DefaultConfig()
 	config.LogOutput = io.Discard
 

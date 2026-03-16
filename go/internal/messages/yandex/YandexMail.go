@@ -17,6 +17,8 @@ const (
 	imapServer = "imap.yandex.ru:993"
 	smtpServer = "smtp.yandex.com"
 	smtpPort   = 587
+
+	idleReconnectTimeout = 25 * time.Minute
 )
 
 type inboxProcessor func(start bool) error // TODO ну херня какая то
@@ -114,7 +116,9 @@ func (s *YandexMail) handleClient(client *imapclient.Client) error {
 				return err
 			}
 
-		case <-time.After(25 * time.Minute):
+		case <-time.After(idleReconnectTimeout):
+			slog.Debug(fmt.Sprintf("%s: idle reconnect timeout", log.ObjName(s)))
+
 			if err := s.idleCmd.Close(); err != nil {
 				return err
 			}
@@ -153,14 +157,16 @@ func (s *YandexMail) Close() error {
 	return err
 }
 
-func (s *YandexMail) DeleteMail(uid imap.UID) error {
-	storeCmd := s.Client.Store(imap.UIDSetNum(uid), &imap.StoreFlags{
-		Op:    imap.StoreFlagsAdd,
-		Flags: []imap.Flag{imap.FlagDeleted},
-	}, nil)
+func (s *YandexMail) DeleteMails(uids []imap.UID) error {
+	for _, uid := range uids {
+		storeCmd := s.Client.Store(imap.UIDSetNum(uid), &imap.StoreFlags{
+			Op:    imap.StoreFlagsAdd,
+			Flags: []imap.Flag{imap.FlagDeleted},
+		}, nil)
 
-	if err := storeCmd.Close(); err != nil {
-		return err
+		if err := storeCmd.Close(); err != nil {
+			return err
+		}
 	}
 
 	if err := s.Client.Expunge().Close(); err != nil {

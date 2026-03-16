@@ -127,19 +127,18 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 	return infoBuf, err
 }
 
-func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) (sessionBuf []byte, err error) {
+func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) ([]byte, error) {
 	var offerInfo OfferInfo
 	if err := json.Unmarshal(infoBuf, &offerInfo); err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
-	err = w.CreatePeer(offerInfo.IceServer)
-	if err != nil {
-		return sessionBuf, err
+	if err := w.CreatePeer(offerInfo.IceServer); err != nil {
+		return nil, err
 	}
 
 	if err := w.peer.SetRemoteDescription(*offerInfo.Session); err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
 	w.peer.AddICECandidate(*offerInfo.Candidate)
@@ -147,9 +146,9 @@ func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) (sessionBuf []byte, err e
 	answer, err := w.peer.CreateAnswer(nil)
 	w.peer.SetLocalDescription(answer)
 
-	sessionBuf, err = json.Marshal(w.peer.LocalDescription())
+	sessionBuf, err := json.Marshal(w.peer.LocalDescription())
 	if err != nil {
-		return sessionBuf, err
+		return nil, err
 	}
 
 	return sessionBuf, err
@@ -168,8 +167,8 @@ func (w *WebRTCTransport) SetAnswer(answerBuf []byte) error {
 	return nil
 }
 
-func (w *WebRTCTransport) Close() {
-	w.peer.Close()
+func (w *WebRTCTransport) Close() error {
+	return w.peer.Close()
 }
 
 func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
