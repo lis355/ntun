@@ -243,6 +243,10 @@ func (y *YandexWebRTCTransport) Transport() (net.Conn, error) {
 	return nil, nil
 }
 
+func (c *YandexWebRTCTransport) RateLimit() *cfg.Rate {
+	return &c.cfg.RateLimit
+}
+
 func (y *YandexWebRTCTransport) Listen() error {
 	return nil
 }

@@ -36,9 +36,8 @@ func main() {
 			Port: 8080,
 		},
 		Transport: &cfg.TcpClientTransport{
-			Host:      "localhost",
-			Port:      8081,
-			RateLimit: cfg.Rate{Value: 50 * 1024 * 1024},
+			Host: "localhost",
+			Port: 8081,
 		},
 	}
 
@@ -51,7 +50,7 @@ func main() {
 		Transport: &cfg.TcpServerTransport{
 			Host:      "localhost",
 			Port:      8081,
-			RateLimit: cfg.Rate{Value: 50 * 1024 * 1024},
+			RateLimit: cfg.Rate{Value: 5 * 1024 * 1024 / 8, Interval: time.Second},
 		},
 	}
 
@@ -264,10 +263,10 @@ func main() {
 	simpleHttpEchoServer := dev.NewSimpleHttpEchoServer()
 	simpleHttpEchoServer.ListenAndServe(simpleHttpEchoServerPort)
 
-	const simpleHttpsEchoServerPort = 8083
-	var simpleHttpsEchoServerRequestUrl = fmt.Sprintf("https://localhost:%d", simpleHttpsEchoServerPort)
-	simpleHttpsEchoServer := dev.NewSimpleHttpsEchoServer()
-	simpleHttpsEchoServer.ListenAndServe(simpleHttpsEchoServerPort)
+	// const simpleHttpsEchoServerPort = 8083
+	// var simpleHttpsEchoServerRequestUrl = fmt.Sprintf("https://localhost:%d", simpleHttpsEchoServerPort)
+	// simpleHttpsEchoServer := dev.NewSimpleHttpsEchoServer()
+	// simpleHttpsEchoServer.ListenAndServe(simpleHttpsEchoServerPort)
 
 	proxyServerPort := clientCfg.Input.(*cfg.Socks5Input).Port
 	socks5ProxyAddress := fmt.Sprintf("localhost:%d", proxyServerPort)
@@ -294,30 +293,30 @@ func main() {
 		panic(fmt.Sprintf("result != testStr %s %s", result, testStr))
 	}
 
-	result, err = requester.Post(simpleHttpsEchoServerRequestUrl, testStr)
-	if err != nil {
-		panic(err)
-	}
+	// result, err = requester.Post(simpleHttpsEchoServerRequestUrl, testStr)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	if result != testStr {
-		panic(fmt.Sprintf("result != testStr %s %s", result, testStr))
-	}
+	// if result != testStr {
+	// 	panic(fmt.Sprintf("result != testStr %s %s", result, testStr))
+	// }
 
-	ip, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
-	if err != nil {
-		panic(err)
-	}
+	// ip, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTP_URL"))
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	slog.Info(fmt.Sprintf("Public IP %s", ip))
+	// slog.Info(fmt.Sprintf("Public IP %s", ip))
 
-	ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
-	if err != nil {
-		panic(err)
-	}
+	// ipHttps, err := requester.Get(os.Getenv("DEVELOP_GET_PUBLIC_IP_HTTPS_URL"))
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	if ip != ipHttps {
-		panic(fmt.Sprintf("ip != ipHttps %s %s", ip, ipHttps))
-	}
+	// if ip != ipHttps {
+	// 	panic(fmt.Sprintf("ip != ipHttps %s %s", ip, ipHttps))
+	// }
 
 	// const n = 5
 	// var wg sync.WaitGroup
@@ -338,6 +337,8 @@ func main() {
 	// wg.Wait()
 
 	// _ = simpleHttpEchoServerRequestUrl
+
+	select {}
 
 	clientNode.Input.Close()
 	serverNode.Output.Close()

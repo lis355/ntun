@@ -3,6 +3,7 @@ package cfg
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
@@ -47,7 +48,7 @@ func TestConfig(t *testing.T) {
 				Transport: &TcpClientTransport{
 					Host:      "localhost",
 					Port:      8303,
-					RateLimit: Rate{50 * 1024 * 1024},
+					RateLimit: Rate{Value: 50 * 1024 * 1024, Interval: time.Second},
 				},
 			},
 		},
@@ -75,7 +76,7 @@ func TestConfig(t *testing.T) {
 				Transport: &TcpServerTransport{
 					Host:      "localhost",
 					Port:      8303,
-					RateLimit: Rate{50 * 1024 * 1024},
+					RateLimit: Rate{Value: 50 * 1024 * 1024, Interval: time.Second},
 				},
 			},
 		},

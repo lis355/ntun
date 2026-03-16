@@ -48,6 +48,10 @@ func (c *TcpServerTransport) Transport() (net.Conn, error) {
 	return conn, nil
 }
 
+func (c *TcpServerTransport) RateLimit() *cfg.Rate {
+	return &c.cfg.RateLimit
+}
+
 // func (c *TcpServerTransport) Start() error {
 // 	slog.Debug("[TcpServerTransport] starting")
 // 	defer slog.Debug("[TcpServerTransport] started")
@@ -212,6 +216,10 @@ func (c *TcpClientTransport) Transport() (net.Conn, error) {
 	slog.Debug(fmt.Sprintf("%s: connected successfull to %s", log.ObjName(c), address))
 
 	return conn, nil
+}
+
+func (c *TcpClientTransport) RateLimit() *cfg.Rate {
+	return &c.cfg.RateLimit
 }
 
 func (c *TcpClientTransport) Listen() error {

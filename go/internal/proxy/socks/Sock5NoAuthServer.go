@@ -93,32 +93,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 		return
 	}
 
-	// slog.Debug(fmt.Sprintf("[%s]: connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
-
-	// DEBUG
-	// protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
-	// dstConn = protocolDetectorConn
-
-	// var protocolWg sync.WaitGroup
-	// protocolWg.Add(1)
-
-	// go func() {
-	// 	defer protocolWg.Done()
-
-	// 	protocol := <-protocolDetectorConn.Detected
-	// 	switch pr := protocol.(type) {
-	// 	case *connections.HttpProtocol:
-	// 		slog.Info(fmt.Sprintf("detected %s protocol", pr.Protocol()))
-	// 	case *connections.HttpsProtocol:
-	// 		slog.Info(fmt.Sprintf("detected %s protocol %s", pr.Protocol(), pr.Domain))
-	// 	}
-	// }()
-
 	proxy.Proxy(srcConn, dstConn)
-
-	// protocolWg.Wait()
-
-	// slog.Debug(fmt.Sprintf("[%s]: disconnected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 }
 
 func (s *Sock5NoAuthServer) handshakeNoAuth(srcConn net.Conn) (string, error) {

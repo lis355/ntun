@@ -12,7 +12,6 @@ import (
 	"ntun/internal/mux"
 	ntunConnections "ntun/internal/ntun/connections"
 	"ntun/internal/proxy"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,6 +87,8 @@ func (m *ConnectionManager) handleTransportConn(transportConn net.Conn) {
 	m.transportConn = transportConn
 
 	// m.transportConn = dev.NewSnifferHexDumpDebugConn(m.transportConn, fmt.Sprintf("[%s:transportConn]", log.ObjName(m)), true)
+
+	m.transportConn = connections.NewRateLimitedConn(m.transportConn, m.node.Transporter.RateLimit())
 
 	err := m.cipherTransportConn()
 	if err != nil {
@@ -289,31 +290,9 @@ func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
-	// DEBUG
 	// conn = dev.NewSnifferHexDumpDebugConn(conn, fmt.Sprintf("direct"), false)
 
-	// DEBUG
-	protocolDetectorConn := connections.NewProtocolDetectorConn(outConn)
-	outConn = protocolDetectorConn
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		protocol := <-protocolDetectorConn.Detected
-		switch pr := protocol.(type) {
-		case *connections.HttpProtocol:
-			slog.Info(fmt.Sprintf("%s: detected %s protocol", log.ObjName(m), pr.Protocol()))
-		case *connections.HttpsProtocol:
-			slog.Info(fmt.Sprintf("%s: detected %s protocol %s", log.ObjName(m), pr.Protocol(), pr.Domain))
-		}
-	}()
-
 	proxy.Proxy(conn, outConn)
-
-	wg.Wait()
 }
 
 func (m *ConnectionManager) Dial(dstAddress string) (net.Conn, error) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.yaml.in/yaml/v3"
@@ -30,7 +31,8 @@ type DirectOutput struct {
 }
 
 type Rate struct {
-	Value uint32
+	Value    uint32
+	Interval time.Duration
 }
 
 func (r *Rate) UnmarshalYAML(value *yaml.Node) error {
@@ -39,25 +41,23 @@ func (r *Rate) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 
-	val, err := parseRateLimit(s)
+	err := r.parse(s)
 	if err != nil {
 		return err
 	}
 
-	r.Value = val
-
 	return nil
 }
 
-func parseRateLimit(s string) (uint32, error) {
+func (r *Rate) parse(s string) error {
 	s = strings.TrimSpace(s)
 
 	if s == "" {
-		return 0, nil
+		return fmt.Errorf("bad rate format %s", s)
 	}
 
 	if !strings.HasSuffix(s, "ps") {
-		return 0, fmt.Errorf("bad rate format %s", s)
+		return fmt.Errorf("bad rate format %s", s)
 	}
 	s = strings.TrimSuffix(s, "ps")
 
@@ -72,15 +72,18 @@ func parseRateLimit(s string) (uint32, error) {
 		}
 	}
 	if !hasByteName {
-		return 0, fmt.Errorf("bad rate format %s", s)
+		return fmt.Errorf("bad rate format %s", s)
 	}
 
-	val, err := strconv.Atoi(s)
+	value, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, fmt.Errorf("bad rate format %s", s)
+		return fmt.Errorf("bad rate format %s", s)
 	}
 
-	return uint32(val * int(math.Pow(1024, float64(i)))), nil
+	r.Value = uint32(value * int(math.Pow(1024, float64(i))))
+	r.Interval = time.Second
+
+	return nil
 }
 
 // TODO изучить встроенные структуры и их парсинг
