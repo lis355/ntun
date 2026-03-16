@@ -19,19 +19,24 @@ import (
 )
 
 func main() {
+	debugLogs := flag.Bool("v", false, "show debug logs")
+
+	configPath := flag.String("c", "", "config file path")
+
+	flag.Parse()
+
 	app.InitEnv()
+
+	if debugLogs != nil &&
+		*debugLogs {
+		os.Setenv("LOG_LEVEL", "debug")
+	}
+
 	log.Init()
 	app.PrintLogo()
 	app.PrintHeader()
 
-	var configPath string
-	flag.StringVar(&configPath, "c", "", "config file path (short)")
-	flag.StringVar(&configPath, "config", "", "config file path (long)")
-
-	flag.Parse()
-
-	cfg := parseConfig(configPath)
-	slog.Debug(fmt.Sprintf("%+v", cfg))
+	cfg := parseConfig(*configPath)
 
 	node := node.NewNode(cfg)
 	slog.Info(fmt.Sprintf("Node: %s", node.String()))

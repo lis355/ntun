@@ -29,5 +29,5 @@ func PrintLogo() {
 }
 
 func PrintHeader() {
-	slog.Info(fmt.Sprintf("%s v%s (%s)", Name, Version, runtime.Version()))
+	slog.Info(fmt.Sprintf("%s v%s (%s %s/%s)", Name, Version, runtime.Version(), runtime.GOOS, runtime.GOARCH))
 }

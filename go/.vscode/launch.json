@@ -12,13 +12,11 @@
 			"program": "${workspaceFolder}/cmd/ntun/main.go",
 			"cwd": "${workspaceFolder}",
 			"console": "integratedTerminal",
-			"env": {
-				"LOG_LEVEL": "debug",
-				"DEVELOPMENT": "true"
-			},
+			"env": {},
 			"args": [
+				"-v",
 				"-c",
-				"test/testdata/configs/config.yaml"
+				"test/testdata/configs/config.tcp-client.yaml"
 			]
 		},
 		{
@@ -29,9 +27,7 @@
 			"program": "${workspaceFolder}/cmd/internal/dev/main.go",
 			"cwd": "${workspaceFolder}",
 			"console": "internalConsole",
-			"env": {
-				"LOG_LEVEL": "debug"
-			}
+			"env": {}
 		},
 		{
 			"name": "go current script",

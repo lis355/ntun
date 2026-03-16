@@ -29,7 +29,7 @@ func (s *Socks5Input) Listen() error {
 
 	address := net.JoinHostPort(host, strconv.Itoa(int(s.cfg.Port)))
 
-	s.serv = socks.NewSock5NoAuthServer(s.node.ConnManager)
+	s.serv = socks.NewSock5NoAuthServer(s.node.ConnectionManager)
 
 	return s.serv.Listen(address)
 }

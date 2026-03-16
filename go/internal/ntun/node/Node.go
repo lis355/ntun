@@ -2,9 +2,7 @@ package node
 
 import (
 	"fmt"
-	"log/slog"
 	"ntun/internal/cfg"
-	"ntun/internal/log"
 	"ntun/internal/ntun/connections"
 	"ntun/internal/ntun/transport"
 
@@ -15,7 +13,7 @@ type Node struct {
 	Config        *cfg.Config
 	Input, Output connections.Сonnecter
 	transport.Transporter
-	*ConnManager
+	*ConnectionManager
 }
 
 func NewNode(config *cfg.Config) *Node {
@@ -50,14 +48,14 @@ func (n *Node) AssignComponents(input, output connections.Сonnecter, transporte
 	n.Input = input
 	n.Output = output
 	n.Transporter = transporter
-	n.ConnManager = NewConnManager(n, outputDialer)
+	n.ConnectionManager = NewConnManager(n, outputDialer)
 }
 
 func (n *Node) Start() error {
-	slog.Debug(fmt.Sprintf("%s: starting", log.ObjName(n)))
-	defer slog.Debug(fmt.Sprintf("%s: started", log.ObjName(n)))
+	// slog.Debug(fmt.Sprintf("%s: starting", log.ObjName(n)))
+	// defer slog.Debug(fmt.Sprintf("%s: started", log.ObjName(n)))
 
-	err := n.ConnManager.Start()
+	err := n.ConnectionManager.Start()
 	if err != nil {
 		return err
 	}
@@ -66,10 +64,10 @@ func (n *Node) Start() error {
 }
 
 func (n *Node) Stop() error {
-	slog.Debug(fmt.Sprintf("%s: stopping", log.ObjName(n)))
-	defer slog.Debug(fmt.Sprintf("%s: stopped", log.ObjName(n)))
+	// slog.Debug(fmt.Sprintf("%s: stopping", log.ObjName(n)))
+	// defer slog.Debug(fmt.Sprintf("%s: stopped", log.ObjName(n)))
 
-	err := n.ConnManager.Stop()
+	err := n.ConnectionManager.Stop()
 	if err != nil {
 		return err
 	}

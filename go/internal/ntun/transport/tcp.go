@@ -36,8 +36,6 @@ func (c *TcpServerTransport) Transport() (net.Conn, error) {
 		return nil, fmt.Errorf("listener is not started")
 	}
 
-	slog.Debug(fmt.Sprintf("%s: trying to accept connection", log.ObjName(c)))
-
 	conn, err := c.listener.Accept()
 	if err != nil {
 		slog.Debug(fmt.Sprintf("%s: connection failed, waiting", log.ObjName(c)))
@@ -194,7 +192,7 @@ func NewTcpClientTransport(cfg *cfg.TcpClientTransport) (c *TcpClientTransport) 
 		// connChan: make(chan net.Conn),
 		dialer: net.Dialer{
 			Timeout:   30 * time.Second,
-			KeepAlive: 1 * time.Hour,
+			KeepAlive: 3 * time.Minute,
 		},
 	}
 }

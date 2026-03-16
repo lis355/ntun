@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -91,5 +92,7 @@ func Init() {
 }
 
 func ObjName(v any) string {
-	return fmt.Sprintf("[%T:%p]", v, v)
+	parts := strings.Split(reflect.TypeOf(v).String(), ".")
+	name := parts[len(parts)-1]
+	return fmt.Sprintf("[%s:%p]", name, v)
 }

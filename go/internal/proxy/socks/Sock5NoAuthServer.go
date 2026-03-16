@@ -96,9 +96,6 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	// slog.Debug(fmt.Sprintf("[%s]: connected %s -- %s (%s)", srcConn.RemoteAddr(), dstConn.RemoteAddr(), address))
 
 	// DEBUG
-	// dstConn = dev.NewSnifferHexDumpDebugConn(dstConn, fmt.Sprintf("socks"), false)
-
-	// DEBUG
 	// protocolDetectorConn := connections.NewProtocolDetectorConn(dstConn)
 	// dstConn = protocolDetectorConn
 

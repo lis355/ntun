@@ -19,7 +19,11 @@ import (
 	"github.com/libp2p/go-yamux"
 )
 
-type ConnManager struct {
+const (
+	transportRetryingTimeout = 3 * time.Second
+)
+
+type ConnectionManager struct {
 	node          *Node
 	outputDialer  ntunConnections.Dialer // TODO hack сделать абстракцию
 	transportConn net.Conn
@@ -30,24 +34,24 @@ type ConnManager struct {
 	wasConnected bool
 }
 
-func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnManager {
-	return &ConnManager{
+func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnectionManager {
+	return &ConnectionManager{
 		node:         node,
 		outputDialer: outputDialer,
 	}
 }
 
-func (m *ConnManager) Start() error {
+func (m *ConnectionManager) Start() error {
 	go m.process()
 
 	return nil
 }
 
-func (m *ConnManager) Stop() error {
+func (m *ConnectionManager) Stop() error {
 	return nil
 }
 
-func (m *ConnManager) clear() {
+func (m *ConnectionManager) clear() {
 	// if m.mux != nil {
 	// 	m.mux.Close()
 	// 	m.mux = nil
@@ -64,7 +68,7 @@ func (m *ConnManager) clear() {
 	}
 }
 
-func (m *ConnManager) process() {
+func (m *ConnectionManager) process() {
 	if err := m.node.Transporter.Listen(); err != nil {
 		slog.Warn(fmt.Sprintf("%s: transport listen error: %v", log.ObjName(m), err))
 	}
@@ -76,19 +80,21 @@ func (m *ConnManager) process() {
 		}
 
 		if !m.wasConnected {
-			slog.Warn(fmt.Sprintf("%s: can't get transport, waiting", log.ObjName(m)))
+			slog.Debug(fmt.Sprintf("%s: can't get transport, waiting %s", log.ObjName(m), transportRetryingTimeout))
 
-			time.Sleep(3 * time.Second)
+			time.Sleep(transportRetryingTimeout)
 		}
 
 		m.wasConnected = false
 	}
 }
 
-func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
+func (m *ConnectionManager) handleTransportConn(transportConn net.Conn) {
 	m.clear()
 
 	m.transportConn = transportConn
+
+	// m.transportConn = dev.NewSnifferHexDumpDebugConn(m.transportConn, fmt.Sprintf("[%s:transportConn]", log.ObjName(m)), true)
 
 	err := m.cipherTransportConn()
 	if err != nil {
@@ -96,8 +102,6 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 
 		return
 	}
-
-	// m.transportConn = dev.NewSnifferHexDumpDebugConn(m.transportConn, fmt.Sprintf("[%s:ConnManager:transportConn]", log.ObjName(m)), false)
 
 	err = m.doTransportHandshake()
 	if err != nil {
@@ -130,11 +134,6 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 
 	m.session = session
 
-	// go func() {
-	// 	time.Sleep(1 * time.Second)
-	// 	m.transportConn.Close()
-	// }()
-
 	// m.mux = mux.NewMux(m.transportConn)
 	// muxListener, err := m.mux.Listen()
 	// if err != nil {
@@ -158,7 +157,7 @@ func (m *ConnManager) handleTransportConn(transportConn net.Conn) {
 	}
 }
 
-func (m *ConnManager) cipherTransportConn() error {
+func (m *ConnectionManager) cipherTransportConn() error {
 	cipherAesGcmConn, err := connections.NewCipherAesGcmConn(m.transportConn, []byte(m.node.Config.CipherKey))
 	if err != nil {
 		return err
@@ -242,17 +241,17 @@ func CmpUUID(a, b uuid.UUID) int {
 	return 0
 }
 
-func (m *ConnManager) doTransportHandshake() error {
+func (m *ConnectionManager) doTransportHandshake() error {
 	m.outHs = &TransportHandshake{Version: app.Version, Id: m.node.Config.Id}
 
 	err := WriteMsg(m.transportConn, m.outHs)
-	slog.Debug(fmt.Sprintf("%s: written transport hs %+v", log.ObjName(m), m.outHs))
+	// slog.Debug(fmt.Sprintf("%s: written transport hs %+v", log.ObjName(m), m.outHs))
 	if err != nil {
 		return err
 	}
 
 	err = ReadMsg(m.transportConn, &m.inHs)
-	slog.Debug(fmt.Sprintf("%s: readed transport hs %+v", log.ObjName(m), m.inHs))
+	// slog.Debug(fmt.Sprintf("%s: readed transport hs %+v", log.ObjName(m), m.inHs))
 	if err != nil {
 		return err
 	}
@@ -282,7 +281,7 @@ type ConnectMsg struct {
 	Address string
 }
 
-func (m *ConnManager) handleMuxConn(conn net.Conn) {
+func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 	var msg ConnectMsg
 	err := ReadMsg(conn, &msg)
 	if err != nil {
@@ -335,7 +334,7 @@ func (m *ConnManager) handleMuxConn(conn net.Conn) {
 	wg.Wait()
 }
 
-func (m *ConnManager) Dial(dstAddress string) (net.Conn, error) {
+func (m *ConnectionManager) Dial(dstAddress string) (net.Conn, error) {
 	if m.session == nil {
 		return nil, net.ErrClosed
 	}

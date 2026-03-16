@@ -1,0 +1,12 @@
+name: test
+id: 6a971624-0b19-4c8d-8ceb-d5544675e898
+allowed: 
+  - 1ee18100-39f7-434c-9206-47bfe572169d
+pass: d4174751-908f-4803-ae28-d4aebc02c48a
+output: 
+  type: direct
+transport: 
+  type: tcp-server
+  host: localhost
+  port: 8303
+  rateLimit: 50mbps
