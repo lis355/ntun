@@ -1,11 +1,8 @@
 package proxy
 
 import (
-	"fmt"
 	"io"
-	"log/slog"
 	"net"
-	"ntun/internal/log"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -15,7 +12,7 @@ type proxy struct {
 }
 
 func (p *proxy) run() {
-	slog.Debug(fmt.Sprintf("%s: proxying %s <--> %s", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr()))
+	// slog.Debug(fmt.Sprintf("%s: proxying %s <--> %s", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr()))
 
 	var g errgroup.Group
 
@@ -56,7 +53,9 @@ func (p *proxy) run() {
 	p.srcConn.Close()
 	p.dstConn.Close()
 
-	slog.Debug(fmt.Sprintf("%s: done proxying %s <--> %s err=%v", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr(), err))
+	_ = err
+
+	// slog.Debug(fmt.Sprintf("%s: done proxying %s <--> %s err=%v", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr(), err))
 }
 
 func Proxy(srcConn, dstConn net.Conn) {

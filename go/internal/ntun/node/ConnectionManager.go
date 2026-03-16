@@ -4,19 +4,18 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"ntun/internal/app"
 	"ntun/internal/connections"
 	"ntun/internal/log"
+	"ntun/internal/mux"
 	ntunConnections "ntun/internal/ntun/connections"
 	"ntun/internal/proxy"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/libp2p/go-yamux"
 )
 
 const (
@@ -29,9 +28,8 @@ type ConnectionManager struct {
 	transportConn net.Conn
 	inHs, outHs   *TransportHandshake
 	client        bool
-	// mux           *mux.Mux
-	session      *yamux.Session
-	wasConnected bool
+	mux           *mux.Mux
+	wasConnected  bool
 }
 
 func NewConnManager(node *Node, outputDialer ntunConnections.Dialer) *ConnectionManager {
@@ -52,14 +50,9 @@ func (m *ConnectionManager) Stop() error {
 }
 
 func (m *ConnectionManager) clear() {
-	// if m.mux != nil {
-	// 	m.mux.Close()
-	// 	m.mux = nil
-	// }
-
-	if m.session != nil {
-		m.session.Close()
-		m.session = nil
+	if m.mux != nil {
+		m.mux.Close()
+		m.mux = nil
 	}
 
 	if m.transportConn != nil {
@@ -112,16 +105,14 @@ func (m *ConnectionManager) handleTransportConn(transportConn net.Conn) {
 		return
 	}
 
-	// DEBUG turn off yamux warnings about tcp resets
-	config := yamux.DefaultConfig()
-	config.LogOutput = io.Discard
+	mux, err := mux.NewMux(m.transportConn, m.client)
+	if err != nil {
+		m.clear()
 
-	var session *yamux.Session
-	if m.client {
-		session, err = yamux.Client(m.transportConn, config)
-	} else {
-		session, err = yamux.Server(m.transportConn, config)
+		return
 	}
+
+	err = mux.Listen()
 	if err != nil {
 		m.clear()
 
@@ -132,19 +123,10 @@ func (m *ConnectionManager) handleTransportConn(transportConn net.Conn) {
 
 	slog.Info(fmt.Sprintf("%s: node %s connected", log.ObjName(m), m.inHs.Id.String()))
 
-	m.session = session
-
-	// m.mux = mux.NewMux(m.transportConn)
-	// muxListener, err := m.mux.Listen()
-	// if err != nil {
-	// 	m.clear()
-
-	// 	return
-	// }
+	m.mux = mux
 
 	for {
-		conn, err := m.session.Accept()
-		// conn, err := muxListener.Accept()
+		conn, err := m.mux.Accept()
 		if err != nil {
 			slog.Info(fmt.Sprintf("%s: node %s disconnected %v", log.ObjName(m), m.inHs.Id.String(), err))
 
@@ -298,7 +280,7 @@ func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
-	// slog.Debug(fmt.Sprintf("%s: mux stream accepted connect to %s", log.ObjName(m), msg.Address))
+	slog.Info(fmt.Sprintf("%s: proxy to %s", log.ObjName(m), msg.Address))
 
 	outConn, err := m.outputDialer.Dial(msg.Address)
 	if err != nil {
@@ -335,11 +317,13 @@ func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 }
 
 func (m *ConnectionManager) Dial(dstAddress string) (net.Conn, error) {
-	if m.session == nil {
+	if m.mux == nil {
 		return nil, net.ErrClosed
 	}
 
-	dstConn, err := m.session.Open()
+	slog.Info(fmt.Sprintf("%s: wants proxy to %s", log.ObjName(m), dstAddress))
+
+	dstConn, err := m.mux.CreateStream()
 	if err != nil {
 		return nil, err
 	}

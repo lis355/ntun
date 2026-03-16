@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/libp2p/go-yamux"
 )
 
 const uint32Len uint32 = 4
@@ -47,15 +48,37 @@ type Mux struct {
 
 	acceptCh chan *stream
 	writeCh  chan messanger
+
+	// TODO write own
+	session *yamux.Session
 }
 
-func NewMux(conn net.Conn) *Mux {
-	return &Mux{
-		conn:     conn,
-		streams:  make(map[streamId]*stream),
-		acceptCh: make(chan *stream),
-		writeCh:  make(chan messanger),
+func NewMux(conn net.Conn, client bool) (*Mux, error) {
+	// DEBUG turn off yamux warnings about tcp resets
+	config := yamux.DefaultConfig()
+	config.LogOutput = io.Discard
+
+	var sessionCreator func(conn net.Conn, config *yamux.Config) (*yamux.Session, error)
+	if client {
+		sessionCreator = yamux.Client
+	} else {
+		sessionCreator = yamux.Server
 	}
+
+	session, err := sessionCreator(conn, config)
+	if err != nil {
+		return nil, err
+	}
+
+	m := &Mux{
+		// conn:     conn,
+		// streams:  make(map[streamId]*stream),
+		// acceptCh: make(chan *stream),
+		// writeCh:  make(chan messanger),
+		session: session,
+	}
+
+	return m, nil
 }
 
 type msgType byte
@@ -204,11 +227,13 @@ func (m *msgStreamData) Decode(buf []byte) error {
 	return nil
 }
 
-func (m *Mux) Listen() (net.Listener, error) {
+func (m *Mux) Listen() error {
+	return nil
+
 	go m.doRead()
 	go m.doWrite()
 
-	return m, nil
+	return nil
 }
 
 func (m *Mux) doRead() error {
@@ -341,6 +366,8 @@ func (m *Mux) doWrite() error {
 }
 
 func (m *Mux) CreateStream() (net.Conn, error) {
+	return m.session.Open()
+
 	stream, err := m.doCreateStream()
 	if err != nil {
 		return nil, m.shutdown(err)
@@ -353,6 +380,8 @@ func (m *Mux) CreateStream() (net.Conn, error) {
 }
 
 func (m *Mux) Accept() (net.Conn, error) {
+	return m.session.Accept()
+
 	stream, ok := <-m.acceptCh
 	if !ok {
 		return nil, io.EOF
@@ -362,6 +391,8 @@ func (m *Mux) Accept() (net.Conn, error) {
 }
 
 func (m *Mux) Close() error {
+	return m.session.Close()
+
 	return m.shutdown(nil)
 }
 
