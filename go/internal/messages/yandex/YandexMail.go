@@ -99,6 +99,10 @@ func (s *YandexMail) handleClient(client *imapclient.Client) error {
 
 		select {
 		case <-s.newMailCh:
+			if s.idleCmd == nil {
+				return nil
+			}
+
 			if err := s.idleCmd.Close(); err != nil {
 				return err
 			}

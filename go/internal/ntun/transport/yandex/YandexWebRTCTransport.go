@@ -1,6 +1,7 @@
 package yandex
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,8 @@ const (
 	callingStateAnswer    = "answer"
 	callingStateWaiting   = "waiting"
 	callingStateConnected = "connected"
+
+	callingTimeout = 30 * time.Second
 )
 
 type signalingMsg struct {
@@ -110,12 +113,18 @@ func NewYandexMailSignaling(transportCfg *cfg.YandexWebRTCTransport, node *node.
 	s := &YandexMailSignaling{
 		cipher: cipher,
 		node:   node,
-		mailCh: make(chan *signalingMsg),
+		mailCh: make(chan *signalingMsg, 16),
 	}
 
 	s.YandexMail = *yandex.NewYandexMail(transportCfg.MailUser, transportCfg.MailPass, s.processInbox)
 
 	return s, nil
+}
+
+func (s *YandexMailSignaling) Close() error {
+	close(s.mailCh)
+
+	return s.YandexMail.Close()
 }
 
 func (s *YandexMailSignaling) processInbox(start bool) error {
@@ -215,7 +224,7 @@ func (s *YandexMailSignaling) processMail(start bool, subject string, date time.
 	if start &&
 		time.Since(date) > oldMailAge {
 		delete = true
-		slog.Debug(fmt.Sprintf("%s: recieved mail is old %s %s %d bytes", log.ObjName(s), subject, date.Format(time.RFC3339), len(buf)))
+		slog.Debug(fmt.Sprintf("%s: mail is old", log.ObjName(s)))
 	}
 
 	var decodedBuf []byte
@@ -223,7 +232,7 @@ func (s *YandexMailSignaling) processMail(start bool, subject string, date time.
 		buf, decodingErr := GZipCipherBase64Decode(s.cipher, buf)
 		if decodingErr != nil {
 			delete = true
-			slog.Debug(fmt.Sprintf("%s: recieved mail error decoding %s %s %d bytes", log.ObjName(s), subject, date.Format(time.RFC3339), len(buf)))
+			slog.Debug(fmt.Sprintf("%s: recieved mail error decoding", log.ObjName(s)))
 		}
 
 		decodedBuf = buf
@@ -233,7 +242,7 @@ func (s *YandexMailSignaling) processMail(start bool, subject string, date time.
 		var msg signalingMsg
 		if err := json.Unmarshal(decodedBuf, &msg); err != nil {
 			delete = true
-			slog.Debug(fmt.Sprintf("%s: recieved mail error decoding %s %s %d bytes", log.ObjName(s), subject, date.Format(time.RFC3339), len(buf)))
+			slog.Debug(fmt.Sprintf("%s: recieved mail error decoding", log.ObjName(s)))
 		} else if msg.Version != app.Version {
 			delete = true
 			slog.Debug(fmt.Sprintf("%s: recieved mail bad version %s app version %s", log.ObjName(s), msg.Version, app.Version))
@@ -242,16 +251,25 @@ func (s *YandexMailSignaling) processMail(start bool, subject string, date time.
 			if msg.Sender == s.node.Config.Id {
 				// пропускаем, это не нам сообщение (оно нами сделанное)
 				delete = false
+				slog.Debug(fmt.Sprintf("%s: recieved mail is ours, skip", log.ObjName(s)))
 			} else if !s.node.HasAllowedToConnectNodeId(msg.Sender) {
 				delete = true
 				slog.Debug(fmt.Sprintf("%s: recieved mail from unknown node", log.ObjName(s)))
 			} else {
 				delete = true
-				// slog.Debug(fmt.Sprintf("%s: recieved mail %s %s", log.ObjName(s), subject, date.Format(time.RFC3339)))
+				slog.Debug(fmt.Sprintf("%s: recieved mail from %s node", log.ObjName(s), msg.Sender))
 
-				s.mailCh <- &msg
+				// NOTE неблокирующая отправка в канал с буфером
+				select {
+				case s.mailCh <- &msg:
+				default:
+				}
 			}
 		}
+	}
+
+	if delete {
+		slog.Debug(fmt.Sprintf("%s: recieved mail will deleted", log.ObjName(s)))
 	}
 
 	return delete
@@ -292,8 +310,11 @@ type YandexWebRTCTransport struct {
 	webRTCTransport  *transport.WebRTCTransport
 	node             *node.Node
 	signaling        *YandexMailSignaling
+	callingCtx       context.Context
+	callingCtxCancel context.CancelFunc
 	callingState     string
 	callingStartTime time.Time
+	callingTimer     *time.Timer
 }
 
 func NewYandexWebRTCTransport(cfg *cfg.YandexWebRTCTransport, node *node.Node) (*YandexWebRTCTransport, error) {
@@ -303,15 +324,19 @@ func NewYandexWebRTCTransport(cfg *cfg.YandexWebRTCTransport, node *node.Node) (
 	}
 
 	return &YandexWebRTCTransport{
-		cfg:             cfg,
-		webRTCTransport: transport.NewWebRTCTransport(),
-		node:            node,
-		signaling:       signaling,
-		callingState:    callingStateNone,
+		cfg:       cfg,
+		node:      node,
+		signaling: signaling,
 	}, nil
 }
 
 func (y *YandexWebRTCTransport) Transport() (net.Conn, error) {
+	select {
+	case <-y.callingCtx.Done():
+		return nil, y.callingCtx.Err()
+	default:
+	}
+
 	conn, err := y.webRTCTransport.Transport()
 	if err != nil {
 		return nil, err
@@ -321,6 +346,8 @@ func (y *YandexWebRTCTransport) Transport() (net.Conn, error) {
 	conn = connections.NewBufferedConn(conn, 4096, 10*time.Millisecond)
 
 	y.callingState = callingStateConnected
+
+	y.callingTimer.Stop()
 
 	slog.Debug(fmt.Sprintf("%s: callingState %s %s", log.ObjName(y), y.callingState, y.callingStartTime.Format(time.RFC3339)))
 
@@ -332,21 +359,22 @@ func (c *YandexWebRTCTransport) RateLimit() *cfg.Rate {
 }
 
 func (y *YandexWebRTCTransport) Listen() error {
-	if err := y.signaling.Listen(); err != nil {
-		return err
-	}
+	// TODO сделать фазу старта чтобы разбирать заявку на старте
+
+	y.callingStart()
 
 	go y.handleMessages()
 
-	// DEBUG
 	go func() {
-		// NOTE пока что клиента (тот, что начинает webrtc) определяем как того, у кого есть Input
-		if y.node.Input != nil {
-			if err := y.callingCreateOffer(); err != nil {
-				y.abort(err)
+		select {
+		case <-y.callingCtx.Done():
+			return
+		case <-y.webRTCTransport.DisconnectCh:
+			y.callingAbort(errors.New("transport disconnected"))
 
-				return
-			}
+			y.callingStart()
+
+			return
 		}
 	}()
 
@@ -354,21 +382,68 @@ func (y *YandexWebRTCTransport) Listen() error {
 }
 
 func (y *YandexWebRTCTransport) Close() error {
+	y.abort(nil)
+
+	return nil
+}
+
+func (y *YandexWebRTCTransport) callingStart() {
+	callingCtx, callingCtxCancel := context.WithCancel(context.Background())
+
+	y.webRTCTransport = transport.NewWebRTCTransport()
+	y.callingCtx = callingCtx
+	y.callingCtxCancel = callingCtxCancel
+	y.callingState = callingStateNone
+
 	if err := y.signaling.Listen(); err != nil {
-		return err
+		y.abort(err)
+
+		return
+	}
+
+	// TODO пока что клиент будет пробовать сделать подключение сразу как включился
+	// клиента (тот, что начинает webrtc) определяем как того, у кого есть Input
+	if y.node.Input != nil {
+		if err := y.callingCreateOffer(); err != nil {
+			y.abort(err)
+
+			return
+		}
+	}
+}
+
+func (y *YandexWebRTCTransport) callingAbort(err error) {
+	select {
+	case <-y.callingCtx.Done():
+		return
+	default:
+	}
+
+	slog.Debug(fmt.Sprintf("%s: abort calling %v", log.ObjName(y), err))
+
+	if y.callingTimer != nil {
+		y.callingTimer.Stop()
 	}
 
 	if err := y.webRTCTransport.Close(); err != nil {
-		return err
+		return
 	}
 
-	return nil
+	y.callingState = callingStateNone
+
+	y.callingCtxCancel()
+
+	// TODO
 }
 
 func (y *YandexWebRTCTransport) abort(err error) {
 	slog.Debug(fmt.Sprintf("%s: aborting %v", log.ObjName(y), err))
 
-	// TODO
+	y.callingAbort(nil)
+
+	if err := y.signaling.Close(); err != nil {
+		return
+	}
 }
 
 func (y *YandexWebRTCTransport) handleMessages() {
@@ -376,11 +451,17 @@ func (y *YandexWebRTCTransport) handleMessages() {
 		msg := y.signaling.recieveMessage()
 		if msg == nil {
 			y.abort(nil)
+
 			return
 		}
 
-		// NOTE обработка параллельно чтобы не мешать signaling разгребать почту
-		go y.handleMessage(msg)
+		select {
+		case <-y.callingCtx.Done():
+			return
+		default:
+		}
+
+		y.handleMessage(msg)
 	}
 }
 
@@ -392,7 +473,7 @@ func (y *YandexWebRTCTransport) handleMessage(msg *signalingMsg) {
 		switch y.callingState {
 		case callingStateNone:
 			if err := y.callingCreateAnswer(msg.Buf); err != nil {
-				y.abort(err)
+				y.callingAbort(err)
 
 				return
 			}
@@ -401,7 +482,7 @@ func (y *YandexWebRTCTransport) handleMessage(msg *signalingMsg) {
 		case callingStateAnswer:
 			// retry
 			if err := y.callingCreateAnswer(msg.Buf); err != nil {
-				y.abort(err)
+				y.callingAbort(err)
 
 				return
 			}
@@ -414,7 +495,7 @@ func (y *YandexWebRTCTransport) handleMessage(msg *signalingMsg) {
 		case callingStateNone: // bad logic
 		case callingStateOffer:
 			if err := y.callingResumeOffer(msg.Buf); err != nil {
-				y.abort(err)
+				y.callingAbort(err)
 
 				return
 			}
@@ -429,6 +510,8 @@ func (y *YandexWebRTCTransport) handleMessage(msg *signalingMsg) {
 }
 
 func (y *YandexWebRTCTransport) callingCreateOffer() error {
+	slog.Debug(fmt.Sprintf("%s: callingCreateOffer", log.ObjName(y)))
+
 	iceServer, err := y.getIceServer()
 	if err != nil {
 		slog.Error(fmt.Sprintf("%s: failed to get iceServer %v", log.ObjName(y), err))
@@ -453,12 +536,16 @@ func (y *YandexWebRTCTransport) callingCreateOffer() error {
 	y.callingState = callingStateOffer
 	y.callingStartTime = time.Now()
 
+	y.callingTimer = time.AfterFunc(callingTimeout, y.callingTimerTimeout)
+
 	slog.Debug(fmt.Sprintf("%s: callingState %s %s", log.ObjName(y), y.callingState, y.callingStartTime.Format(time.RFC3339)))
 
 	return nil
 }
 
 func (y *YandexWebRTCTransport) callingCreateAnswer(buf []byte) error {
+	slog.Debug(fmt.Sprintf("%s: callingCreateAnswer", log.ObjName(y)))
+
 	buf, err := y.webRTCTransport.CreateAnswer(buf)
 	if err != nil {
 		slog.Error(fmt.Sprintf("%s: failed to create answer %v", log.ObjName(y), err))
@@ -476,12 +563,16 @@ func (y *YandexWebRTCTransport) callingCreateAnswer(buf []byte) error {
 	y.callingState = callingStateAnswer
 	y.callingStartTime = time.Now()
 
+	y.callingTimer = time.AfterFunc(callingTimeout, y.callingTimerTimeout)
+
 	slog.Debug(fmt.Sprintf("%s: callingState %s %s", log.ObjName(y), y.callingState, y.callingStartTime.Format(time.RFC3339)))
 
 	return nil
 }
 
 func (y *YandexWebRTCTransport) callingResumeOffer(buf []byte) error {
+	slog.Debug(fmt.Sprintf("%s: callingResumeOffer", log.ObjName(y)))
+
 	err := y.webRTCTransport.SetAnswer(buf)
 	if err != nil {
 		slog.Error(fmt.Sprintf("%s: failed to set answer %v", log.ObjName(y), err))
@@ -494,6 +585,12 @@ func (y *YandexWebRTCTransport) callingResumeOffer(buf []byte) error {
 	slog.Debug(fmt.Sprintf("%s: callingState %s %s", log.ObjName(y), y.callingState, y.callingStartTime.Format(time.RFC3339)))
 
 	return nil
+}
+
+func (y *YandexWebRTCTransport) callingTimerTimeout() {
+	y.callingAbort(errors.New("calling timeout"))
+
+	y.callingStart()
 }
 
 type IceServersCache struct {

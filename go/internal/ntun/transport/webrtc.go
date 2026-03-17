@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,19 +29,26 @@ type WebRTCTransport struct {
 	dcCloseCh   chan struct{}
 	dcWriteCh   chan []byte
 	wconn       *webRTCConn
+
+	ConnectCh    chan struct{}
+	DisconnectCh chan struct{}
 }
 
 func NewWebRTCTransport() *WebRTCTransport {
 	return &WebRTCTransport{
-		transportCh: make(chan struct{}),
-		dcOpenCh:    make(chan struct{}),
-		dcCloseCh:   make(chan struct{}),
-		dcWriteCh:   make(chan []byte),
+		transportCh:  make(chan struct{}),
+		dcOpenCh:     make(chan struct{}),
+		dcCloseCh:    make(chan struct{}),
+		dcWriteCh:    make(chan []byte),
+		ConnectCh:    make(chan struct{}),
+		DisconnectCh: make(chan struct{}),
 	}
 }
 
 func (w *WebRTCTransport) Transport() (net.Conn, error) {
-	<-w.transportCh
+	if _, ok := <-w.transportCh; !ok {
+		return nil, errors.New("transport closed")
+	}
 
 	return w.wconn, nil
 }
@@ -168,6 +176,10 @@ func (w *WebRTCTransport) SetAnswer(answerBuf []byte) error {
 }
 
 func (w *WebRTCTransport) Close() error {
+	if w.peer == nil {
+		return nil
+	}
+
 	return w.peer.Close()
 }
 
@@ -203,6 +215,7 @@ func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 					return
 				}
 				w.dcWriteCh = make(chan []byte)
+				w.ConnectCh <- struct{}{}
 				w.transportCh <- struct{}{}
 
 				slog.Debug(fmt.Sprintf("%s: connected via %s", log.ObjName(w), w.iceServer.URLs[0]))
@@ -229,6 +242,8 @@ func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 				w.dc.OnMessage(nil)
 
 				w.dc = nil
+
+				w.DisconnectCh <- struct{}{}
 
 				slog.Debug(fmt.Sprintf("%s: disconnected", log.ObjName(w)))
 

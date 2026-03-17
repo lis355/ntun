@@ -24,7 +24,7 @@ func main() {
 	app.PrintHeader()
 
 	clientId, serverId := uuid.MustParse("4e82bc58-e39d-4aaf-86d5-54cfbe27ec53"), uuid.MustParse("145fe7cb-efef-46e3-afc0-f907759ec17c") // uuid.New(), uuid.New()
-	cipherKey := "key"
+	cipherKey := "d4174751-908f-4803-ae28-d4aebc02c48a"
 
 	clientCfg := &cfg.Config{
 		Name:      "client",
@@ -90,8 +90,9 @@ func main() {
 	}
 
 	clientNode := createAndStartNode(clientCfg)
-	time.Sleep(5 * time.Second)
+	select {}
 	serverNode := createAndStartNode(serverCfg)
+	time.Sleep(10 * time.Second)
 	time.Sleep(20 * time.Second)
 
 	// Test
