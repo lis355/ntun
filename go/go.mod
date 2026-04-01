@@ -11,6 +11,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-yamux v1.4.1
 	github.com/open-ch/ja3 v1.0.1
+	github.com/pion/logging v0.2.2
 	github.com/pion/webrtc/v3 v3.3.6
 	github.com/wneessen/go-mail v0.7.2
 	go.yaml.in/yaml/v3 v3.0.4
@@ -27,7 +28,6 @@ require (
 	github.com/pion/dtls/v2 v2.2.12 // indirect
 	github.com/pion/ice/v2 v2.3.38 // indirect
 	github.com/pion/interceptor v0.1.29 // indirect
-	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.14 // indirect

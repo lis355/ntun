@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -19,6 +20,10 @@ import (
 
 const (
 	transportRetryingTimeout = 3 * time.Second
+)
+
+var (
+	ErrTransportNotConnected = errors.New("transport is not connected")
 )
 
 type ConnectionManager struct {
@@ -281,7 +286,7 @@ func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 		return
 	}
 
-	slog.Info(fmt.Sprintf("%s: proxy to %s", log.ObjName(m), msg.Address))
+	slog.Info(fmt.Sprintf("%s: --> %s", log.ObjName(m), msg.Address))
 
 	outConn, err := m.outputDialer.Dial(msg.Address)
 	if err != nil {
@@ -297,10 +302,10 @@ func (m *ConnectionManager) handleMuxConn(conn net.Conn) {
 
 func (m *ConnectionManager) Dial(dstAddress string) (net.Conn, error) {
 	if m.mux == nil {
-		return nil, net.ErrClosed
+		return nil, ErrTransportNotConnected
 	}
 
-	slog.Info(fmt.Sprintf("%s: wants proxy to %s", log.ObjName(m), dstAddress))
+	slog.Info(fmt.Sprintf("%s: --> %s", log.ObjName(m), dstAddress))
 
 	dstConn, err := m.mux.CreateStream()
 	if err != nil {

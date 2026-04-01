@@ -64,12 +64,12 @@ func (s *Sock5NoAuthServer) Listen(address string) error {
 func (s *Sock5NoAuthServer) Close() error {
 	err := s.listener.Close()
 	if err != nil {
-		slog.Error(fmt.Sprintf("[%s]: error %s", log.ObjName(s), err))
+		slog.Error(fmt.Sprintf("%s: error %s", log.ObjName(s), err))
 
 		return err
 	}
 
-	slog.Info(fmt.Sprintf("[%s]: closed", log.ObjName(s)))
+	slog.Info(fmt.Sprintf("%s: closed", log.ObjName(s)))
 
 	return nil
 }
@@ -77,7 +77,7 @@ func (s *Sock5NoAuthServer) Close() error {
 func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 	address, err := s.handshakeNoAuth(srcConn)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[%s]: handshake error: %v", log.ObjName(s), err))
+		slog.Error(fmt.Sprintf("%s: handshake error: %v", log.ObjName(s), err))
 
 		srcConn.Close()
 
@@ -86,7 +86,7 @@ func (s *Sock5NoAuthServer) handleConn(srcConn net.Conn) {
 
 	dstConn, err := s.handleDial(srcConn, address)
 	if err != nil {
-		slog.Error(fmt.Sprintf("[%s]: dial error: %v", log.ObjName(s), err))
+		slog.Error(fmt.Sprintf("%s: dial error: %v", log.ObjName(s), err))
 
 		srcConn.Close()
 

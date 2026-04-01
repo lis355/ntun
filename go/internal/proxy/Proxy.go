@@ -7,59 +7,49 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type proxy struct {
-	srcConn, dstConn net.Conn
-}
-
-func (p *proxy) run() {
-	// slog.Debug(fmt.Sprintf("%s: proxying %s <--> %s", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr()))
+func Proxy(srcConn, dstConn net.Conn) {
+	// slog.Debug(fmt.Sprintf("%s: proxying %s <--> %s", log.ObjName(p), srcConn.RemoteAddr(), dstConn.RemoteAddr()))
 
 	var g errgroup.Group
 
 	g.Go(func() error {
-		_, err := io.Copy(p.srcConn, p.dstConn)
+		_, err := io.Copy(srcConn, dstConn)
 
-		tcpConn, ok := p.srcConn.(*net.TCPConn)
+		tcpConn, ok := srcConn.(*net.TCPConn)
 		if ok {
 			tcpConn.CloseWrite()
-			p.srcConn.Read(make([]byte, 1))
+			srcConn.Read(make([]byte, 1))
 		}
 
-		p.srcConn.Close()
+		srcConn.Close()
 
-		// slog.Debug(fmt.Sprintf("Done proxying 1  p.srcConn,  p.dstConn %v", err))
+		// slog.Debug(fmt.Sprintf("Done proxying 1  srcConn,  dstConn %v", err))
 
 		return err
 	})
 
 	g.Go(func() error {
-		_, err := io.Copy(p.dstConn, p.srcConn)
+		_, err := io.Copy(dstConn, srcConn)
 
-		tcpConn, ok := p.dstConn.(*net.TCPConn)
+		tcpConn, ok := dstConn.(*net.TCPConn)
 		if ok {
 			tcpConn.CloseWrite()
-			p.dstConn.Read(make([]byte, 1))
+			dstConn.Read(make([]byte, 1))
 		}
 
-		p.dstConn.Close()
+		dstConn.Close()
 
-		// slog.Debug(fmt.Sprintf("Done proxying 2  p.dstConn,  p.srcConn %v", err))
+		// slog.Debug(fmt.Sprintf("Done proxying 2  dstConn,  srcConn %v", err))
 
 		return err
 	})
 
 	err := g.Wait()
 
-	p.srcConn.Close()
-	p.dstConn.Close()
+	srcConn.Close()
+	dstConn.Close()
 
 	_ = err
 
-	// slog.Debug(fmt.Sprintf("%s: done proxying %s <--> %s err=%v", log.ObjName(p), p.srcConn.RemoteAddr(), p.dstConn.RemoteAddr(), err))
-}
-
-func Proxy(srcConn, dstConn net.Conn) {
-	proxy := &proxy{srcConn, dstConn}
-
-	proxy.run()
+	// slog.Debug(fmt.Sprintf("%s: done proxying %s <--> %s err=%v", log.ObjName(p), srcConn.RemoteAddr(), dstConn.RemoteAddr(), err))
 }

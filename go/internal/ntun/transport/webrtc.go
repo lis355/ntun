@@ -9,15 +9,19 @@ import (
 	"log/slog"
 	"net"
 	"ntun/internal/log"
+	"ntun/internal/utils"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 )
 
 const (
-	DataChannelName     = "DC"
-	ICEGatheringTimeout = 30 * time.Second
+	webRtcLogs = false
+
+	ICEGatheringTimeout = 60 * time.Second
 )
 
 type WebRTCTransport struct {
@@ -56,11 +60,22 @@ func (w *WebRTCTransport) Transport() (net.Conn, error) {
 func (w *WebRTCTransport) createPeer(iceServer *webrtc.ICEServer) error {
 	w.iceServer = iceServer
 
+	settingEngine := webrtc.SettingEngine{}
+
+	if webRtcLogs {
+		loggerFactory := logging.NewDefaultLoggerFactory()
+		loggerFactory.DefaultLogLevel = logging.LogLevelTrace
+		loggerFactory.Writer = os.Stderr
+		settingEngine.LoggerFactory = loggerFactory
+	}
+
 	config := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{*w.iceServer},
 	}
 
-	peer, err := webrtc.NewPeerConnection(config)
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
+
+	peer, err := api.NewPeerConnection(config)
 	if err != nil {
 		return err
 	}
@@ -88,7 +103,9 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 		return nil, err
 	}
 
-	dc, err := w.peer.CreateDataChannel(DataChannelName, nil)
+	dataChannelName := utils.RandShortString()
+
+	dc, err := w.peer.CreateDataChannel(dataChannelName, nil)
 	if err != nil {
 		return nil, err
 	}

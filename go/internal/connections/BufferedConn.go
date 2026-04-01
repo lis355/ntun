@@ -20,18 +20,11 @@ type BufferedConn struct {
 }
 
 const (
-	defaultMaxSize  = 4096
-	defaultMaxDelay = 10 * time.Millisecond
+	DefaultBufferedConnMaxSize  = 4096
+	DefaultBufferedConnMaxDelay = 5 * time.Millisecond
 )
 
 func NewBufferedConn(conn net.Conn, maxSize int, maxDelay time.Duration) *BufferedConn {
-	if maxSize <= 0 {
-		maxSize = defaultMaxSize
-	}
-	if maxDelay <= 0 {
-		maxDelay = defaultMaxDelay
-	}
-
 	bc := &BufferedConn{
 		Conn:     conn,
 		buffer:   make([]byte, 0, maxSize),

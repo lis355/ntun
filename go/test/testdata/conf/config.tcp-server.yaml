@@ -7,6 +7,6 @@ output:
   type: direct
 transport: 
   type: tcp-server
-  host: localhost
+  host: 0.0.0.0
   port: 8303
   rateLimit: 50mbps
