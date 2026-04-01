@@ -17,16 +17,18 @@ export async function getVkWebSocketSignalServerUrlByJoinId(joinId) {
 	const username = "Anonym " + deviceId.slice(0, 4);
 
 	async function postJson(url, params) {
+		log("POST", url, "BODY", new URLSearchParams(params).toString());
+
 		const response = await fetch(url, {
 			method: "POST",
 			body: new URLSearchParams(params)
 		});
 
+		if (response.status !== 200) throw new Error(`${response.status} ${response.statusText}`);
+
 		const json = await response.json();
 
-		// log("POST", url);
-		// log(JSON.stringify(params, null, 2));
-		// log(JSON.stringify(json, null, 2));
+		log(JSON.stringify(json, null, 2));
 
 		return json;
 	}
@@ -38,7 +40,6 @@ export async function getVkWebSocketSignalServerUrlByJoinId(joinId) {
 		"client_id": clientId,
 		"app_id": appId,
 		"version": "1",
-
 		"scopes": "audio_anonymous,video_anonymous,photos_anonymous,profile_anonymous",
 		"isApiOauthAnonymEnabled": "false"
 	});

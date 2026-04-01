@@ -9,6 +9,7 @@ import (
 	"ntun/internal/log"
 	"ntun/internal/ntun/fabric"
 	"ntun/internal/ntun/node"
+	"ntun/internal/ntun/transport/vk"
 	"os"
 	"strconv"
 	"time"
@@ -20,8 +21,13 @@ func main() {
 	app.InitEnv()
 	os.Setenv("LOG_LEVEL", "debug")
 	log.Init()
-	app.PrintLogo()
+	// app.PrintLogo()
 	app.PrintHeader()
+
+	_, err := vk.GetIceServerFromJoinIdOrLink(os.Getenv("DEVELOP_VK_JOIN_ID_OR_LINK"))
+	if err != nil {
+		panic(err)
+	}
 
 	clientId, serverId := uuid.MustParse("4e82bc58-e39d-4aaf-86d5-54cfbe27ec53"), uuid.MustParse("145fe7cb-efef-46e3-afc0-f907759ec17c") // uuid.New(), uuid.New()
 	cipherKey := "d4174751-908f-4803-ae28-d4aebc02c48a"
