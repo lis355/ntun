@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -91,8 +92,33 @@ func Init() {
 	)
 }
 
+var (
+	names   map[string]map[string]int
+	namesMu sync.Mutex
+)
+
+func init() {
+	names = make(map[string]map[string]int)
+}
+
 func ObjName(v any) string {
 	parts := strings.Split(reflect.TypeOf(v).String(), ".")
 	name := parts[len(parts)-1]
-	return fmt.Sprintf("[%s:%p]", name, v)
+
+	namesMu.Lock()
+
+	_, ok := names[name]
+	if !ok {
+		names[name] = make(map[string]int)
+	}
+
+	pname, ok := names[name][fmt.Sprintf("%p", v)]
+	if !ok {
+		pname = len(names[name]) + 1
+		names[name][fmt.Sprintf("%p", v)] = pname
+	}
+
+	namesMu.Unlock()
+
+	return fmt.Sprintf("[%s:%d]", name, pname)
 }

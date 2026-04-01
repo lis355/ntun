@@ -90,10 +90,10 @@ func main() {
 	}
 
 	clientNode := createAndStartNode(clientCfg)
-	select {}
+	time.Sleep(5 * time.Second)
+	// select {}
 	serverNode := createAndStartNode(serverCfg)
-	time.Sleep(10 * time.Second)
-	time.Sleep(20 * time.Second)
+	time.Sleep(30 * time.Second)
 
 	// Test
 

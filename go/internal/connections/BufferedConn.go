@@ -19,12 +19,17 @@ type BufferedConn struct {
 	writeCh  chan []byte
 }
 
+const (
+	defaultMaxSize  = 4096
+	defaultMaxDelay = 10 * time.Millisecond
+)
+
 func NewBufferedConn(conn net.Conn, maxSize int, maxDelay time.Duration) *BufferedConn {
 	if maxSize <= 0 {
-		maxSize = 4096
+		maxSize = defaultMaxSize
 	}
 	if maxDelay <= 0 {
-		maxDelay = 10 * time.Millisecond
+		maxDelay = defaultMaxDelay
 	}
 
 	bc := &BufferedConn{

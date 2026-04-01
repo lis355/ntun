@@ -30,17 +30,17 @@ type WebRTCTransport struct {
 	dcWriteCh   chan []byte
 	wconn       *webRTCConn
 
-	ConnectCh    chan struct{}
+	// ConnectCh    chan struct{}
 	DisconnectCh chan struct{}
 }
 
 func NewWebRTCTransport() *WebRTCTransport {
 	return &WebRTCTransport{
-		transportCh:  make(chan struct{}),
-		dcOpenCh:     make(chan struct{}),
-		dcCloseCh:    make(chan struct{}),
-		dcWriteCh:    make(chan []byte),
-		ConnectCh:    make(chan struct{}),
+		transportCh: make(chan struct{}),
+		dcOpenCh:    make(chan struct{}),
+		dcCloseCh:   make(chan struct{}),
+		dcWriteCh:   make(chan []byte),
+		// ConnectCh:    make(chan struct{}),
 		DisconnectCh: make(chan struct{}),
 	}
 }
@@ -53,7 +53,7 @@ func (w *WebRTCTransport) Transport() (net.Conn, error) {
 	return w.wconn, nil
 }
 
-func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
+func (w *WebRTCTransport) createPeer(iceServer *webrtc.ICEServer) error {
 	w.iceServer = iceServer
 
 	config := webrtc.Configuration{
@@ -67,9 +67,9 @@ func (w *WebRTCTransport) CreatePeer(iceServer *webrtc.ICEServer) error {
 
 	w.peer = peer
 
-	// w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
-	// 	slog.Debug(fmt.Sprintf("%s: ICEConnectionState %s", log.ObjName(w), s))
-	// })
+	w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
+		slog.Debug(fmt.Sprintf("%s: ICEConnectionState %s", log.ObjName(w), s))
+	})
 
 	w.peer.OnDataChannel(w.handleDataChannel)
 
@@ -83,7 +83,7 @@ type OfferInfo struct {
 }
 
 func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, error) {
-	err := w.CreatePeer(iceServer)
+	err := w.createPeer(iceServer)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c != nil &&
 			c.Typ == webrtc.ICECandidateTypeRelay {
-			// slog.Debug(fmt.Sprintf("%s: ICECandidate %s", log.ObjName(w), c.String()))
+			slog.Debug(fmt.Sprintf("%s: ICECandidate %s", log.ObjName(w), c.String()))
 
 			if candidate == nil {
 				candidateInit := c.ToJSON()
@@ -141,7 +141,7 @@ func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	if err := w.CreatePeer(offerInfo.IceServer); err != nil {
+	if err := w.createPeer(offerInfo.IceServer); err != nil {
 		return nil, err
 	}
 
@@ -215,7 +215,7 @@ func (w *WebRTCTransport) handleDataChannel(dc *webrtc.DataChannel) {
 					return
 				}
 				w.dcWriteCh = make(chan []byte)
-				w.ConnectCh <- struct{}{}
+				// w.ConnectCh <- struct{}{}
 				w.transportCh <- struct{}{}
 
 				slog.Debug(fmt.Sprintf("%s: connected via %s", log.ObjName(w), w.iceServer.URLs[0]))
