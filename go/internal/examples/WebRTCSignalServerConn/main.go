@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,14 +26,8 @@ func main() {
 	os.Setenv("LOG_LEVEL", "debug")
 	log.Init()
 
-	var (
-		isClientFlag        = flag.Bool("client", false, "is client")
-		signalServerUrlFlag = flag.String("signal", "http://localhost:8060", "signal server url")
-	)
-	flag.Parse()
-
-	isClient := *isClientFlag
-	signalServerUrl := *signalServerUrlFlag
+	isClient := os.Getenv("DEVELOP_WEB_RTC_CALLER") == "true"
+	signalServerUrl := os.Getenv("DEVELOP_SIGNAL_SERVER_URL")
 
 	webRtc := transport.NewWebRTCTransport()
 
@@ -71,9 +64,9 @@ func main() {
 		offerUrl, _ := url.JoinPath(signalServerUrl, "offer")
 		http.Post(offerUrl, "text/plain", bytes.NewReader(offerBuf))
 
-		for {
-			slog.Info("check answer")
+		slog.Info("check answer")
 
+		for {
 			answerUrl, _ := url.JoinPath(signalServerUrl, "answer")
 			res, err := http.Get(answerUrl)
 			if err != nil {
@@ -119,9 +112,9 @@ func main() {
 
 		conn.Close()
 	} else {
-		for {
-			slog.Info("check offer")
+		slog.Info("check offer")
 
+		for {
 			offerUrl, _ := url.JoinPath(signalServerUrl, "offer")
 			res, err := http.Get(offerUrl)
 			if err != nil {

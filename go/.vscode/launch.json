@@ -16,7 +16,7 @@
 			"args": [
 				"-v",
 				"-c",
-				"test/testdata/configs/config.yaml"
+				"test/testdata/conf/config.yaml"
 			]
 		},
 		{
