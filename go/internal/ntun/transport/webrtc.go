@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,6 +84,32 @@ func (w *WebRTCTransport) createPeer(iceServer *webrtc.ICEServer) error {
 
 	w.peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
 		slog.Debug(fmt.Sprintf("%s: ICEConnectionState %s", log.ObjName(w), s))
+
+		if s == webrtc.ICEConnectionStateConnected ||
+			s == webrtc.ICEConnectionStateCompleted {
+
+			stats := w.peer.GetStats()
+
+			var pair webrtc.ICECandidatePairStats
+			candidates := map[string]webrtc.ICECandidateStats{}
+
+			for _, s := range stats {
+				switch v := s.(type) {
+				case webrtc.ICECandidateStats:
+					candidates[v.ID] = v
+				case webrtc.ICECandidatePairStats:
+					if v.State == "succeeded" &&
+						v.Nominated {
+						pair = v
+					}
+				}
+			}
+
+			local := candidates[pair.LocalCandidateID]
+			remote := candidates[pair.RemoteCandidateID]
+
+			slog.Debug(fmt.Sprintf("%s: connected %+v -> %+v\n", log.ObjName(w), local, remote))
+		}
 	})
 
 	w.peer.OnDataChannel(w.handleDataChannel)
@@ -94,57 +119,41 @@ func (w *WebRTCTransport) createPeer(iceServer *webrtc.ICEServer) error {
 
 type sessionCreator func() (webrtc.SessionDescription, error)
 
-func (w *WebRTCTransport) createSession(sessionCreator sessionCreator) ([]*webrtc.ICECandidateInit, error) {
-	candidates := make([]*webrtc.ICECandidateInit, 0, 2)
-
-	ctx, cancel := context.WithTimeout(context.Background(), iceGatheringTimeout)
-
+func (w *WebRTCTransport) createSession(sessionCreator sessionCreator) error {
 	w.peer.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
 
 		slog.Debug(fmt.Sprintf("%s: ICECandidate %s", log.ObjName(w), c.String()))
-
-		candidateInit := c.ToJSON()
-		candidates = append(candidates, &candidateInit)
 	})
 
-	w.peer.OnICEGatheringStateChange(func(state webrtc.ICEGathererState) {
-		slog.Debug(fmt.Sprintf("%s: ICEGathererState %s", log.ObjName(w), state.String()))
+	session, err := sessionCreator()
+	if err != nil {
+		return err
+	}
 
-		switch state {
-		case webrtc.ICEGathererStateNew:
-		case webrtc.ICEGathererStateGathering:
-		case webrtc.ICEGathererStateComplete:
-			cancel()
-		case webrtc.ICEGathererStateClosed:
-			cancel()
-		default:
-			panic(fmt.Sprintf("%s: bad ICEGathererState %s", log.ObjName(w), state.String()))
-		}
-	})
+	if err := w.peer.SetLocalDescription(session); err != nil {
+		return err
+	}
 
-	offer, err := sessionCreator()
-	w.peer.SetLocalDescription(offer)
+	gatherComplete := webrtc.GatheringCompletePromise(w.peer)
 
-	<-ctx.Done()
+	select {
+	case <-gatherComplete:
+	case <-time.After(iceGatheringTimeout):
+		return errors.New("ice gathering timeout")
+	}
 
 	w.peer.OnICECandidate(nil)
 	w.peer.OnICEGatheringStateChange(nil)
 
-	err = ctx.Err()
-	if err == context.DeadlineExceeded {
-		return nil, err
-	}
-
-	return candidates, nil
+	return nil
 }
 
 type OfferInfo struct {
-	Session    *webrtc.SessionDescription
-	IceServer  *webrtc.ICEServer
-	Candidates []*webrtc.ICECandidateInit
+	Session   *webrtc.SessionDescription
+	IceServer *webrtc.ICEServer
 }
 
 func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, error) {
@@ -161,12 +170,11 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 
 	w.handleDataChannel(dc)
 
-	candidates, err := w.createSession(func() (webrtc.SessionDescription, error) { return w.peer.CreateOffer(nil) })
-	if err != nil {
+	if err := w.createSession(func() (webrtc.SessionDescription, error) { return w.peer.CreateOffer(nil) }); err != nil {
 		return nil, err
 	}
 
-	offerInfo := &OfferInfo{Session: w.peer.LocalDescription(), IceServer: w.iceServer, Candidates: candidates}
+	offerInfo := &OfferInfo{Session: w.peer.LocalDescription(), IceServer: w.iceServer}
 
 	infoBuf, err := json.Marshal(offerInfo)
 	if err != nil {
@@ -177,8 +185,7 @@ func (w *WebRTCTransport) CreateOffer(iceServer *webrtc.ICEServer) ([]byte, erro
 }
 
 type AnswerInfo struct {
-	Session    *webrtc.SessionDescription
-	Candidates []*webrtc.ICECandidateInit
+	Session *webrtc.SessionDescription
 }
 
 func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) ([]byte, error) {
@@ -195,18 +202,11 @@ func (w *WebRTCTransport) CreateAnswer(infoBuf []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	candidates, err := w.createSession(func() (webrtc.SessionDescription, error) { return w.peer.CreateAnswer(nil) })
-	if err != nil {
+	if err := w.createSession(func() (webrtc.SessionDescription, error) { return w.peer.CreateAnswer(nil) }); err != nil {
 		return nil, err
 	}
 
-	answerInfo := &AnswerInfo{Session: w.peer.LocalDescription(), Candidates: candidates}
-
-	for _, candidate := range offerInfo.Candidates {
-		slog.Debug(fmt.Sprintf("%s: add candidate from offer %s", log.ObjName(w), candidate.Candidate))
-
-		w.peer.AddICECandidate(*candidate)
-	}
+	answerInfo := &AnswerInfo{Session: w.peer.LocalDescription()}
 
 	sessionBuf, err := json.Marshal(answerInfo)
 	if err != nil {
@@ -224,12 +224,6 @@ func (w *WebRTCTransport) SetAnswer(infoBuf []byte) error {
 
 	if err := w.peer.SetRemoteDescription(*answerInfo.Session); err != nil {
 		return err
-	}
-
-	for _, candidate := range answerInfo.Candidates {
-		slog.Debug(fmt.Sprintf("%s: add candidate from answer %s", log.ObjName(w), candidate.Candidate))
-
-		w.peer.AddICECandidate(*candidate)
 	}
 
 	return nil
