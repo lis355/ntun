@@ -24,7 +24,7 @@ type loggingPacketConn struct {
 func (l *loggingPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	n, err = l.PacketConn.WriteTo(p, addr)
 	if err == nil {
-		slog.Info(fmt.Sprintf("OUT -> %s bytes=%d", addr.String(), n))
+		slog.Info(fmt.Sprintf("UDP OUT -> %s bytes=%d", addr.String(), n))
 	}
 	return n, err
 }
@@ -32,7 +32,7 @@ func (l *loggingPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) 
 func (l *loggingPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = l.PacketConn.ReadFrom(p)
 	if err == nil {
-		slog.Info(fmt.Sprintf("IN  <- %s bytes=%d", addr.String(), n))
+		slog.Info(fmt.Sprintf("UDP IN  <- %s bytes=%d", addr.String(), n))
 	}
 	return n, addr, err
 }
@@ -44,7 +44,7 @@ type loggingConn struct {
 func (l *loggingConn) Read(b []byte) (n int, err error) {
 	n, err = l.Conn.Read(b)
 	if err == nil {
-		slog.Info(fmt.Sprintf("IN  <- %s bytes=%d", l.RemoteAddr().String(), n))
+		slog.Info(fmt.Sprintf("TCP IN  <- %s bytes=%d", l.RemoteAddr().String(), n))
 	}
 	return n, err
 }
@@ -52,7 +52,7 @@ func (l *loggingConn) Read(b []byte) (n int, err error) {
 func (l *loggingConn) Write(b []byte) (n int, err error) {
 	n, err = l.Conn.Write(b)
 	if err == nil {
-		slog.Info(fmt.Sprintf("OUT -> %s bytes=%d", l.RemoteAddr().String(), n))
+		slog.Info(fmt.Sprintf("TCP OUT -> %s bytes=%d", l.RemoteAddr().String(), n))
 	}
 	return n, err
 }
@@ -102,17 +102,15 @@ func main() {
 	user := "user"
 	pass := "pass"
 	realm := "realm"
-	authKey := turn.GenerateAuthKey(user, pass, realm)
 
 	s, err := turn.NewServer(turn.ServerConfig{
 		Realm: realm,
 		AuthHandler: func(username, userRealm string, srcAddr net.Addr) ([]byte, bool) {
-			if username == user &&
-				userRealm == realm {
-				return authKey, true
+			if username != user {
+				return nil, false
 			}
 
-			return nil, false
+			return turn.GenerateAuthKey(user, userRealm, pass), true
 		},
 		PacketConnConfigs: []turn.PacketConnConfig{
 			{
@@ -143,27 +141,31 @@ func main() {
 
 	slog.Info(fmt.Sprintf("TURN server started on %s", serverLocalAdress))
 
-	iceServer := &webrtc.ICEServer{
-		URLs: []string{
-			fmt.Sprintf("turn:%s:%d?transport=udp", publicIp, publicPort),
+	iceServers := []*webrtc.ICEServer{
+		{
+			URLs: []string{
+				fmt.Sprintf("turn:%s:%d?transport=udp", publicIp, publicPort),
+			},
+			Username:   user,
+			Credential: pass,
 		},
-		Username:   user,
-		Credential: pass,
 	}
 
-	jsonBuf, _ := json.Marshal(iceServer)
+	jsonBuf, _ := json.Marshal(iceServers)
 
 	slog.Info(fmt.Sprintf("%s", jsonBuf))
 
-	iceServer = &webrtc.ICEServer{
-		URLs: []string{
-			fmt.Sprintf("turn:%s:%d?transport=tcp", publicIp, publicPort),
+	iceServers = []*webrtc.ICEServer{
+		{
+			URLs: []string{
+				fmt.Sprintf("turn:%s:%d?transport=tcp", publicIp, publicPort),
+			},
+			Username:   user,
+			Credential: pass,
 		},
-		Username:   user,
-		Credential: pass,
 	}
 
-	jsonBuf, _ = json.Marshal(iceServer)
+	jsonBuf, _ = json.Marshal(iceServers)
 
 	slog.Info(fmt.Sprintf("%s", jsonBuf))
 

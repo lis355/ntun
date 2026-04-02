@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	webRtcLogs = true
+	webRtcLogs = false
 
 	iceGatheringTimeout = 60 * time.Second
 )
@@ -108,7 +108,22 @@ func (w *WebRTCTransport) createPeer(iceServer *webrtc.ICEServer) error {
 			local := candidates[pair.LocalCandidateID]
 			remote := candidates[pair.RemoteCandidateID]
 
-			slog.Debug(fmt.Sprintf("%s: connected %+v -> %+v\n", log.ObjName(w), local, remote))
+			iceCandidateTypeToStr := func(candidateType webrtc.ICECandidateType) string {
+				switch candidateType {
+				case webrtc.ICECandidateTypeHost:
+					return "host"
+				case webrtc.ICECandidateTypeSrflx:
+					return "srflx"
+				case webrtc.ICECandidateTypePrflx:
+					return "prflx"
+				case webrtc.ICECandidateTypeRelay:
+					return "relay"
+				default:
+					return "unknown"
+				}
+			}
+
+			slog.Debug(fmt.Sprintf("%s: connected %s:%s:%d:%s -> %s:%s:%d:%s", log.ObjName(w), local.RelayProtocol, local.IP, local.Port, iceCandidateTypeToStr(local.CandidateType), remote.RelayProtocol, remote.IP, remote.Port, iceCandidateTypeToStr(remote.CandidateType)))
 		}
 	})
 

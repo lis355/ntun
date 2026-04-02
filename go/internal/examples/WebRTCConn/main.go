@@ -76,6 +76,11 @@ func main() {
 		readBuf := make([]byte, 1024)
 		for {
 			n, err := conn.Read(readBuf)
+
+			if n > 0 {
+				slog.Info(fmt.Sprintf("r %s", hex.EncodeToString(readBuf[:n])))
+			}
+
 			if err != nil {
 				if errors.Is(err, io.EOF) ||
 					errors.Is(err, io.ErrClosedPipe) {
@@ -85,7 +90,6 @@ func main() {
 				panic(err)
 			}
 
-			slog.Info(fmt.Sprintf("r %s", hex.EncodeToString(readBuf[:n])))
 		}
 	}()
 
@@ -100,7 +104,6 @@ func main() {
 		buf := utils.RandBytes(32)
 		n, err := conn.Write(buf)
 		if err != nil {
-
 			panic(err)
 		}
 
