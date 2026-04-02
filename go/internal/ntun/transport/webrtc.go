@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	webRtcLogs = false
+	webRtcLogs = true
 
 	iceGatheringTimeout = 60 * time.Second
 )

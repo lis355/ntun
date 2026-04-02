@@ -27,7 +27,7 @@ func main() {
 	log.Init()
 
 	isClient := os.Getenv("DEVELOP_WEB_RTC_CALLER") == "true"
-	signalServerUrl := os.Getenv("DEVELOP_SIGNAL_SERVER_URL")
+	signalServerUrl := os.Getenv("DEVELOP_WEB_RTC_SIGNAL_SERVER_URL")
 
 	webRtc := transport.NewWebRTCTransport()
 

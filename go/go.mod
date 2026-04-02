@@ -12,6 +12,7 @@ require (
 	github.com/libp2p/go-yamux v1.4.1
 	github.com/open-ch/ja3 v1.0.1
 	github.com/pion/logging v0.2.2
+	github.com/pion/turn/v2 v2.1.6
 	github.com/pion/webrtc/v3 v3.3.6
 	github.com/wneessen/go-mail v0.7.2
 	go.yaml.in/yaml/v3 v3.0.4
@@ -37,7 +38,6 @@ require (
 	github.com/pion/srtp/v2 v2.0.20 // indirect
 	github.com/pion/stun v0.6.1 // indirect
 	github.com/pion/transport/v2 v2.2.10 // indirect
-	github.com/pion/turn/v2 v2.1.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/wlynxg/anet v0.0.3 // indirect
