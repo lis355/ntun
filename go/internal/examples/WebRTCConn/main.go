@@ -33,8 +33,6 @@ func main() {
 	for _, currentIceServer := range iceServers {
 		for _, url := range currentIceServer.URLs {
 			if strings.HasPrefix(url, "turn:") {
-				// strings.Contains(url, "transport=tcp") {
-
 				iceServer = currentIceServer
 				break
 			}

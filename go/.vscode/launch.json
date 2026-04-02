@@ -27,7 +27,8 @@
 			"program": "${workspaceFolder}/cmd/internal/dev/main.go",
 			"cwd": "${workspaceFolder}",
 			"console": "internalConsole",
-			"env": {}
+			"env": {},
+			"args": []
 		},
 		{
 			"name": "go current script",
@@ -39,7 +40,8 @@
 			"console": "integratedTerminal",
 			"env": {
 				"LOG_LEVEL": "info"
-			}
+			},
+			"args": []
 		},
 		{
 			"name": "ntun/test current package",
